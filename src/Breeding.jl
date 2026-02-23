@@ -15,5 +15,6 @@ include("prediction/predict.jl")
 include("trait/trait.jl")
 include("ocs/ocs.jl")
 
-export sampleID, sampleLoci, eqtl, tbv!, phenotype!
+export sampleID, sampleLoci, eqtl, tbv!, phenotype!, mtpblup
+
 end # module Breeding
