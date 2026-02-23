@@ -2,6 +2,7 @@ module Breeding
 
 using BnGStructs
 using DataFrames
+using Distributions
 using LinearAlgebra
 using Statistics
 using Random
@@ -14,4 +15,5 @@ include("prediction/predict.jl")
 include("trait/trait.jl")
 include("ocs/ocs.jl")
 
+export sampleID, sampleLoci, eqtl, tbv!, phenotype!
 end # module Breeding
