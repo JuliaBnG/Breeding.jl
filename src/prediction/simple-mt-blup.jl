@@ -64,7 +64,7 @@ function mtpblup(ped, trts, giv, G)
         Z₁'X Z₁'Z₁ + kron(iG, giv)
     ]
     x0 = [zeros(Tt); vec(Matrix(select(ped, ebv)))]
-    sol, _ = cg(lhs, rhs)
+    sol, _ = conjugate_gradient(lhs, rhs)
     for (i, e) in enumerate(ebv)
         fra = Tt + (i - 1) * nid + 1
         til = Tt + i * nid
