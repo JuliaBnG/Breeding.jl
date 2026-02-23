@@ -1,6 +1,6 @@
 name = "Breeding"
 uuid = "cb565f4f-111b-40c2-8768-3bafadb18772"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Xijiang Yu <xijiang@users.noreply.github.com>"]
 
 [deps]
