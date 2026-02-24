@@ -16,5 +16,6 @@ include("trait/trait.jl")
 include("ocs/ocs.jl")
 
 export sampleID, sampleLoci, eqtl, tbv!, phenotype!, mtpblup
+export gene_drop, sum_map, sumMap
 
 end # module Breeding
