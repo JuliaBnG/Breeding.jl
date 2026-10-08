@@ -1,8 +1,9 @@
-"""" mtpblup(ped, trts, giv, G)
+"""
+    mtpblup(ped, trts, giv, G)
 
 Perform multi-trait PBLUP to estimate breeding values for traits `trts` in
 pedigree `ped` using the inverse of relationship matrix `giv` and the genetic
-correlation matrix `G`. The estimated breeding values (EBV) are updated in `ped`
+(co)variance matrix `G`. The estimated breeding values (EBV) are updated in `ped`
 in-place.
 
 This is a simplified version of multi-trait PBLUP that assumes no other fixed
@@ -14,14 +15,13 @@ effects, no maternal effects, and no permanent environmental effects.
   DataFrame.
 - `trts` : Vector{Trait}, vector of Trait objects, the order should be the same
   as in the genetic (co)variance matrix `G`.
-- `giv` : SparseMatrixCSC, the inverse ofnumerical relationship matrix
+- `giv` : SparseMatrixCSC, the inverse of the numerator relationship matrix
   calculated from `ped`.
 - `G` : Matrix, genetic (co)variance matrix for all traits.
 
 ## Returns
-- `intercepts` : Vector, vector of trait intercepts.
-- `Gsol` : Matrix, matrix of EBV for all traits (columns) and individuals
-  (rows).
+`nothing`; the EBV are written to the columns "ebv_"*`trait.name` of
+`ped`.
 
 ## Notes
 - The function will find common non-missing phenotypes for all the traits. Then
