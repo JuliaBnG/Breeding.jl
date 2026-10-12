@@ -70,7 +70,9 @@ Output of [`reml`](@ref), all at the returned estimates:
   residual variances, then the lower triangle of each `G0`, by columns;
 - `history`: parameters per iterate (one column each, starting with the
   initial values), `logLs`: their log-likelihoods;
-- `iterations`, and the mixed-model `solutions`.
+- `iterations`, and the mixed-model `solutions`;
+- `steps`: for every iterate, the fraction of the AI step taken (1 for
+  a full step, ``2^{-h}`` after ``h`` halvings), or 0 for an EM step.
 """
 struct REMLResult
     σ²e::Float64
@@ -82,6 +84,7 @@ struct REMLResult
     iterations::Int
     solutions::Vector{Float64}
     residual::Vector{Float64}
+    steps::Vector{Float64}
 end
 
 # lower-triangle index pairs of an m × m covariance matrix
@@ -174,8 +177,8 @@ end
 
 """
     reml(y, X, effects; σ²e | residual, method = :ai, param = :natural,
-         zero = Int[], tol = 1e-8, ltol = nothing, maxiter = 200, maxhalve = 10,
-         maxstep = 5.0) -> REMLResult
+         zero = Int[], tol = 1e-8, ltol = nothing, ntol = nothing, maxiter = 200,
+         maxhalve = 10, maxstep = 5.0, backend = :auto) -> REMLResult
 
 Restricted maximum likelihood (Patterson and Thompson, 1971) for the
 univariate mixed model
@@ -224,21 +227,35 @@ of the parameter space remain numerically positive definite.
 Iteration stops when the largest change in a covariance parameter is
 below `tol` times the largest parameter (at least 1); or, if `ltol` is
 given, when an AI step increases the log-likelihood by less than `ltol`
-(WOMBAT uses ``5 \\times 10^{-4}``); or after `maxiter` iterates.
+(WOMBAT uses ``5 \\times 10^{-4}``) and, if `ntol` is given, the
+increase expected from the next AI step, ``\\tfrac12 g'H^{-1}g`` (half the
+Newton decrement, with ``g`` the gradient and ``H`` the modified AI
+matrix on the scale of `param`), is below `ntol`; or after `maxiter`
+iterates. On flat likelihood surfaces a single small increase does not
+mean that the maximum is near; `ntol` guards against stopping early.
 Near the boundary of the parameter space the likelihood can be very
 flat in some directions, and the parameter criterion alone may need
 many iterates.
 
 The log-likelihood is ``-\\tfrac12[y'Py + \\log|V| + \\log|X'V^{-1}X|]``
-computed through ``\\log|C| + \\log|R| + \\sum_k \\log|G_k|``. ``C^{-1}``
-is formed densely, which limits the model to a few thousand equations.
+computed through ``\\log|C| + \\log|R| + \\sum_k \\log|G_k|``.
+
+`backend`: `:dense` forms ``C^{-1}`` densely (small models); `:sparse`
+keeps one sparsity pattern of ``C`` over all iterates, reuses the
+symbolic CHOLMOD factorisation, takes the traces from the selected
+inverse of ``C`` on its own pattern (Takahashi equations, via
+SelectedInversion.jl) and the AI matrix from solves with the factor;
+`:auto` (default) uses `:sparse` above 2000 equations. Dense
+relationship matrices (e.g. ``G^{-1}``) make the corresponding blocks
+of ``C`` and its factor dense.
 """
 function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:RandomEffect};
               σ²e = nothing, residual = nothing, method::Symbol = :ai, param::Symbol = :natural,
-              zero = Int[], tol = 1e-8, ltol = nothing, maxiter = 200, maxhalve = 10,
-              maxstep = 5.0)
+              zero = Int[], tol = 1e-8, ltol = nothing, ntol = nothing, maxiter = 200,
+              maxhalve = 10, maxstep = 5.0, backend::Symbol = :auto)
     method in (:ai, :em) || throw(ArgumentError("method must be :ai or :em"))
     param in (:natural, :cholesky) || throw(ArgumentError("param must be :natural or :cholesky"))
+    backend in (:auto, :dense, :sparse) || throw(ArgumentError("backend must be :auto, :dense or :sparse"))
     (σ²e === nothing) == (residual === nothing) &&
         throw(ArgumentError("give exactly one of σ²e or residual"))
     res = residual === nothing ? Homogeneous(σ²e) : residual
@@ -252,30 +269,35 @@ function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:Ra
     G0 = [copy(r.G0) for r in effects]
     # log|K_k| from K_k⁻¹ (constant over iterations)
     logK = [-logdet(cholesky(Symmetric(Matrix(r.Kinv)))) for r in effects]
-    # W_c′W_c per residual class (traces for the residual derivatives)
-    WW = [sparse(W[cls.==c, :]' * W[cls.==c, :]) for c in 1:ns]
     nc = [count(==(c), cls) for c in 1:ns]
-    ctx = (; yv, X, W, effects, cls, ns, nc, WW, logK, zero, hom)
+    neq = size(W, 2) - length(zero)
+    be = backend == :auto ? (neq > 2000 ? :sparse : :dense) : backend
+    store = be == :sparse ? _sparse_setup(yv, X, W, effects, cls, ns, zero) :
+            (WW = [sparse(W[cls.==c, :]' * W[cls.==c, :]) for c in 1:ns],)
+    ctx = (; yv, X, W, effects, cls, ns, nc, logK, zero, hom, be, store)
 
     θ = _pars(s, G0)
     ev = _reml_eval(ctx, θ, G0; full = true)
     hist = [θ]
     logLs = [ev.logL]
+    steps = Float64[]
     it = 0
     while it < maxiter
-        θn, ai = method == :em ? (_pars(ev.em_s, ev.em_G), false) :
-                 _ai_step(ctx, θ, G0, ev, param, maxhalve, maxstep)
+        θn, λ = method == :em ? (_pars(ev.em_s, ev.em_G), 0.0) :
+                _ai_step(ctx, θ, G0, ev, param, maxhalve, maxstep)
         evn = _reml_eval(ctx, θn, G0; full = true)
         conv = maximum(abs, θn - θ) < tol * max(1, maximum(abs, θ)) ||
-               (ltol !== nothing && ai && evn.logL - ev.logL < ltol)
+               (ltol !== nothing && λ > 0 && evn.logL - ev.logL < ltol &&
+                (ntol === nothing || _gain(evn, θn, ns, G0, param) < ntol))
         θ, ev = θn, evn
         push!(hist, θ)
         push!(logLs, ev.logL)
+        push!(steps, λ)
         it += 1
         conv && break
     end
     s, G = _unpack(θ, ns, G0)
-    REMLResult(hom ? s[1] : NaN, G, ev.logL, inv(ev.AI), reduce(hcat, hist), logLs, it, ev.x, s)
+    REMLResult(hom ? s[1] : NaN, G, ev.logL, inv(ev.AI), reduce(hcat, hist), logLs, it, ev.x, s, steps)
 end
 
 # WOMBAT's default modification of the AI matrix: add τI so that the
@@ -289,6 +311,16 @@ end
 # AI step from θ, halved until the log-likelihood does not decrease; EM
 # step if no step length does. Returns the new parameters and whether an
 # AI step was taken.
+# increase in log L expected from a (modified) AI step: ½ g′H⁻¹g
+function _gain(ev, θ, ns, G0, param)
+    g, H = ev.grad, ev.AI
+    if param == :cholesky
+        J = _jacobian(θ, ns, G0)
+        g, H = J' * g, J' * H * J
+    end
+    dot(g, _modify_ai(H) \ g) / 2
+end
+
 function _ai_step(ctx, θ, G0, ev, param, maxhalve, maxstep)
     if param == :natural
         step = _modify_ai(ev.AI) \ ev.grad
@@ -306,44 +338,216 @@ function _ai_step(ctx, θ, G0, ev, param, maxhalve, maxstep)
     λ = 1.0
     for _ in 0:maxhalve
         c = cand(λ)
-        ok(c) && _reml_eval(ctx, c, G0; full = false).logL ≥ ev.logL && return c, true
+        ok(c) && _reml_eval(ctx, c, G0; full = false).logL ≥ ev.logL && return c, λ
         λ /= 2
     end
-    _pars(ev.em_s, ev.em_G), false
+    _pars(ev.em_s, ev.em_G), 0.0
+end
+
+# ---- sparse back-end -------------------------------------------------
+# The coefficient matrix C keeps one sparsity pattern over all iterates:
+# the union of the patterns of W_c′W_c (residual classes) and of every
+# block (a, b) of G₀ₖ⁻¹ ⊗ Kₖ⁻¹. Positions of every contribution in that
+# pattern are computed once, so that each evaluation only refills values,
+# the symbolic Cholesky factorisation (CHOLMOD) is reused, and C⁻¹ on the
+# pattern of C is extracted from the selected inverse (SelectedInversion.jl)
+# with a plan made once.
+
+# index into `S.nzval` of every stored entry of `M`, shifted by (ro, co)
+function _positions(S::SparseMatrixCSC, M::SparseMatrixCSC, ro::Integer, co::Integer)
+    out = Vector{Int}(undef, nnz(M))
+    rows = rowvals(S)
+    rm = rowvals(M)
+    t = 0
+    for j in axes(M, 2)
+        lo, hi = S.colptr[j+co], S.colptr[j+co+1] - 1
+        for p in nzrange(M, j)
+            k = searchsortedfirst(rows, rm[p] + ro, lo, hi, Base.Order.Forward)
+            (k ≤ hi && rows[k] == rm[p] + ro) || error("entry outside the pattern of C")
+            out[t+=1] = k
+        end
+    end
+    out
+end
+
+# Σ_t E[pos[t]] v[t]: the trace tr(E M) over the stored entries of M
+function _dotpos(E::Vector{Float64}, pos::Vector{Int}, v::Vector{Float64})
+    acc = 0.0
+    @inbounds @simd for t in eachindex(pos, v)
+        acc += E[pos[t]] * v[t]
+    end
+    acc
+end
+
+mutable struct _SparseState
+    F::Any          # CHOLMOD factor, reused across evaluations
+    plan::Any       # SelectedInversion extraction plan on C[p, p] (supernodal)
+    Cp::Any         # pattern of C[p, p], p the factor's permutation
+    back::Vector{Int}  # entry t of C[p, p] is entry back[t] of C
+end
+
+function _sparse_setup(yv, X, W, effects, cls, ns, zero)
+    keepcol = [setdiff(1:size(X, 2), zero); size(X, 2)+1:size(W, 2)]
+    Wk = W[:, keepcol]
+    neq = size(Wk, 2)
+    WW = SparseMatrixCSC{Float64,Int}[]
+    rhs = Vector{Float64}[]
+    for c in 1:ns
+        rows = findall(==(c), cls)
+        Wc = Wk[rows, :]
+        push!(WW, sparse(Wc' * Wc))
+        push!(rhs, Wc' * yv[rows])
+    end
+    off = Int[]                                   # first equation of each effect, minus one
+    o = length(keepcol) - sum(size(r.Z, 2) for r in effects; init = 0)
+    K = SparseMatrixCSC{Float64,Int}[]
+    for r in effects
+        push!(off, o)
+        push!(K, r.Kinv isa SparseMatrixCSC ? r.Kinv : sparse(Matrix(r.Kinv)))
+        o += size(r.Z, 2)
+    end
+    # pattern of C
+    I_, J_ = Int[], Int[]
+    for M in WW
+        i, j, _ = findnz(M)
+        append!(I_, i); append!(J_, j)
+    end
+    for (k, r) in enumerate(effects)
+        q, mk = nlevels(r), ncomponents(r)
+        i, j, _ = findnz(K[k])
+        for a in 1:mk, b in 1:mk
+            append!(I_, i .+ (off[k] + (a - 1) * q)); append!(J_, j .+ (off[k] + (b - 1) * q))
+        end
+    end
+    S = sparse(I_, J_, 1.0, neq, neq)
+    I_ = J_ = nothing
+    posWW = [_positions(S, M, 0, 0) for M in WW]
+    posK = [[_positions(S, K[k], off[k] + (a - 1) * nlevels(r), off[k] + (b - 1) * nlevels(r))
+             for a in 1:ncomponents(r), b in 1:ncomponents(r)] for (k, r) in enumerate(effects)]
+    (; keepcol, Wk, WW, rhs, off, K, S, posWW, posK, state = _SparseState(nothing, nothing, nothing, Int[]))
+end
+
+# factorise C at (s, G0); returns (factor or nothing, solutions in Wk coordinates)
+function _sparse_factor(st, s, G0)
+    S = st.S
+    nz = zeros(nnz(S))
+    for c in eachindex(st.WW)
+        w = 1 / s[c]
+        v = nonzeros(st.WW[c])
+        pos = st.posWW[c]
+        @inbounds for t in eachindex(pos)
+            nz[pos[t]] += w * v[t]
+        end
+    end
+    for k in eachindex(st.K)
+        Gi = inv(Symmetric(G0[k]))
+        v = nonzeros(st.K[k])
+        for a in axes(Gi, 1), b in axes(Gi, 2)
+            g = Gi[a, b]
+            pos = st.posK[k][a, b]
+            @inbounds for t in eachindex(pos)
+                nz[pos[t]] += g * v[t]
+            end
+        end
+    end
+    C = SparseMatrixCSC(S.m, S.n, S.colptr, S.rowval, nz)
+    if st.state.F === nothing
+        st.state.F = cholesky(Symmetric(C); check = false)
+    else
+        cholesky!(st.state.F, Symmetric(C); check = false)
+    end
+    F = st.state.F
+    issuccess(F) || return nothing, Float64[], C
+    rhs = sum(st.rhs[c] ./ s[c] for c in eachindex(st.rhs))
+    F, F \ rhs, C
+end
+
+# C⁻¹ on the pattern of C (values aligned with S.nzval). The selected
+# inverse is taken in the factor's ordering p and mapped back through a
+# permutation of entry indices made once; building the extraction plan on
+# C[p, p] is much cheaper than SelectedInversion's own depermutation.
+function _sparse_cinv(st, F, C)
+    Z, p = selinv(F; depermute = false)
+    stt = st.state
+    if stt.Cp === nothing
+        tag = SparseMatrixCSC(C.m, C.n, C.colptr, C.rowval, collect(1:nnz(C)))[p, p]
+        stt.back = nonzeros(tag)
+        stt.Cp = SparseMatrixCSC(C.m, C.n, tag.colptr, tag.rowval, zeros(nnz(C)))
+        Z isa SupernodalMatrix && (stt.plan = selinv_extract_setup(Z, stt.Cp))
+    end
+    Ep = stt.Cp
+    if Z isa SupernodalMatrix
+        selinv_extract!(Ep, Z, stt.plan)
+    else
+        selinv_extract!(Ep, Z, stt.Cp)
+    end
+    Ev = Vector{Float64}(undef, nnz(C))
+    Ev[stt.back] = nonzeros(Ep)
+    Ev
 end
 
 # log-likelihood at θ; with `full`, also gradient, AI matrix (covariance
 # scale), EM updates and solutions
 function _reml_eval(ctx, θ, G0ref; full::Bool)
-    (; yv, X, W, effects, cls, ns, nc, WW, logK, zero, hom) = ctx
+    (; yv, X, W, effects, cls, ns, nc, logK, zero, hom, be, store) = ctx
     s, G0 = _unpack(θ, ns, G0ref)
     (all(>(0), s) && all(isposdef, G0)) || return (logL = -Inf,)
     n = length(yv)
     rinv = 1 ./ s[cls]
-    effs = [RandomEffect(r.Z, r.Kinv, G0[k], r.name) for (k, r) in enumerate(effects)]
-    m = mme(yv, X, effs; Rinv = rinv)
-    nt = length(m.rhs)
-    keep = _keep(nt, zero)
-    p = count(≤(size(X, 2)), keep)
-    F = cholesky(Symmetric(Matrix(m.lhs[keep, keep])); check = false)
-    issuccess(F) || return (logL = -Inf,)
+    nt = size(W, 2)
     x = zeros(nt)
-    x[keep] = F \ m.rhs[keep]
+    if be == :sparse
+        F, xk, C = _sparse_factor(store, s, G0)
+        F === nothing && return (logL = -Inf,)
+        x[store.keepcol] = xk
+        logdetC = logdet(F)
+        p = length(store.keepcol) - sum(size(r.Z, 2) for r in effects; init = 0)
+        blocks = [store.off[k]+1:store.off[k]+size(r.Z, 2) for (k, r) in enumerate(effects)]
+        blocks = [store.keepcol[rng] for rng in blocks]
+    else
+        effs = [RandomEffect(r.Z, r.Kinv, G0[k], r.name) for (k, r) in enumerate(effects)]
+        m = mme(yv, X, effs; Rinv = rinv)
+        keep = _keep(nt, zero)
+        p = count(≤(size(X, 2)), keep)
+        Fd = cholesky(Symmetric(Matrix(m.lhs[keep, keep])); check = false)
+        issuccess(Fd) || return (logL = -Inf,)
+        x[keep] = Fd \ m.rhs[keep]
+        logdetC = logdet(Fd)
+        blocks = m.blocks[2:end]
+    end
     e = yv - W * x
     ldG = sum(size(r.Kinv, 1) * logdet(G0[k]) + size(G0[k], 1) * logK[k]
               for (k, r) in enumerate(effects); init = 0.0)
     ldR = sum(nc[c] * log(s[c]) for c in 1:ns)
-    logL = -0.5 * (dot(rinv .* yv, e) + logdet(F) + ldR + ldG)
+    logL = -0.5 * (dot(rinv .* yv, e) + logdetC + ldR + ldG)
     full || return (logL = logL,)
-    Ci = zeros(nt, nt)
-    Ci[keep, keep] = inv(F)
+    # traces: trc[c] = tr(C⁻¹W_c′W_c), T[k][a,b] = tr(C^{ab}K_k⁻¹); solves with C
+    if be == :sparse
+        Ev = _sparse_cinv(store, F, C)
+        trcs = [_dotpos(Ev, store.posWW[c], nonzeros(store.WW[c])) for c in 1:ns]
+        Ts = [[_dotpos(Ev, store.posK[k][a, b], nonzeros(store.K[k]))
+               for a in 1:ncomponents(r), b in 1:ncomponents(r)] for (k, r) in enumerate(effects)]
+        quadW = RF -> (WRF = store.Wk' * RF; WRF' * (F \ WRF))
+    else
+        Ci = zeros(nt, nt)
+        Ci[keep, keep] = inv(Fd)
+        trcs = map(1:ns) do c
+            I_, J_, V_ = findnz(store.WW[c])
+            sum(Ci[i, j] * v for (i, j, v) in zip(I_, J_, V_); init = 0.0)
+        end
+        Ts = map(enumerate(effects)) do (k, r)
+            q, mk = nlevels(r), ncomponents(r)
+            Ck_ = Ci[blocks[k], blocks[k]]
+            [tr(Ck_[(a-1)*q+1:a*q, (b-1)*q+1:b*q] * r.Kinv) for a in 1:mk, b in 1:mk]
+        end
+        quadW = RF -> (WRF = W' * RF; WRF' * (Ci * WRF))
+    end
     # residual parameters
     grad = Float64[]
     fs = Vector{Vector{Float64}}()
     em_s = zeros(ns)
     for c in 1:ns
-        I_, J_, V_ = findnz(WW[c])
-        trc = sum(Ci[i, j] * v for (i, j, v) in zip(I_, J_, V_); init = 0.0)
+        trc = trcs[c]
         ec = e .* (cls .== c)
         push!(grad, -0.5 * (nc[c] / s[c] - trc / s[c]^2 - dot(ec, ec) / s[c]^2))
         push!(fs, ec ./ s[c])
@@ -352,12 +556,10 @@ function _reml_eval(ctx, θ, G0ref; full::Bool)
     # random effects
     em_G = Matrix{Float64}[]
     for (k, r) in enumerate(effects)
-        rng = m.blocks[k+1]
         q, mk = nlevels(r), ncomponents(r)
-        U = reshape(x[rng], q, mk)
+        U = reshape(x[blocks[k]], q, mk)
         Gi = inv(Symmetric(G0[k]))
-        Ck_ = Ci[rng, rng]
-        T = [tr(Ck_[(a-1)*q+1:a*q, (b-1)*q+1:b*q] * r.Kinv) for a in 1:mk, b in 1:mk]
+        T = Ts[k]
         S = U' * (r.Kinv * U)                     # Û'K⁻¹Û
         push!(em_G, (S + T) ./ q)
         for (i, j) in _vech(mk)
@@ -372,7 +574,6 @@ function _reml_eval(ctx, θ, G0ref; full::Bool)
     # average information: AI_ij = ½ f_i' P f_j, P f = R⁻¹f − R⁻¹W C⁻¹ W'R⁻¹ f
     Fm = reduce(hcat, fs)
     RF = rinv .* Fm
-    WRF = W' * RF
-    AI = 0.5 .* (Fm' * RF .- WRF' * (Ci * WRF))
+    AI = 0.5 .* (Fm' * RF .- quadW(RF))
     (logL = logL, grad = grad, AI = Symmetric(AI), em_s = em_s, em_G = em_G, x = x)
 end

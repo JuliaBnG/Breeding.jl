@@ -331,6 +331,13 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         @test rn.G0[1] ≈ [θn[4] θn[5]; θn[5] θn[6]]
         @test size(rn.AIinv) == (9, 9) && isposdef(Symmetric(rn.AIinv))
         @test rn.iterations < 30 && rc.iterations < 30
+        @test length(rc.steps) == rc.iterations && all(0 .≤ rc.steps .≤ 1)
+
+        # stopping on log L change; ntol adds the expected gain of the next step
+        rl = fit(; param = :cholesky, ltol = 0.5)
+        rln = fit(; param = :cholesky, ltol = 0.5, ntol = 1e-6)
+        @test rl.iterations ≤ rln.iterations
+        @test rln.logL ≈ rc.logL atol = 1e-5
 
         # stationary point: central finite differences of logL vanish
         function L(θ)
@@ -341,6 +348,21 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         g = [(h = 1e-4 * max(1, abs(θn[i])); e = zeros(9); e[i] = h; (L(θn + e) - L(θn - e)) / 2h)
              for i in 1:9]
         @test maximum(abs.(g) .* max.(1, abs.(θn))) < 1e-3
+
+        # sparse back-end (fixed pattern, CHOLMOD, selected inverse) = dense
+        rs = fit(; tol = 1e-10, backend = :sparse)
+        @test rs.logL ≈ rn.logL atol = 1e-8
+        @test rs.history[:, end] ≈ θn rtol = 1e-6
+        @test rs.AIinv ≈ rn.AIinv rtol = 1e-6
+        @test rs.solutions ≈ rn.solutions rtol = 1e-6
+        rs0 = reml(y, X, effs(Gs, Ps); residual = res, maxiter = 0, backend = :sparse)
+        @test rs0.logL ≈ Ld
+        # constrained fixed effects are dropped in the sparse back-end
+        Xc = [ones(length(y)) X]                  # rank-deficient: intercept + groups
+        rcd = reml(y, Xc, effs(Gs, Ps); residual = res, zero = [2], maxiter = 3, backend = :dense)
+        rcs = reml(y, Xc, effs(Gs, Ps); residual = res, zero = [2], maxiter = 3, backend = :sparse)
+        @test rcs.logLs ≈ rcd.logLs
+        @test rcs.solutions ≈ rcd.solutions rtol = 1e-8
 
         # one class and Homogeneous agree with the σ²e form
         h1 = reml(y, X, effs(Gs, Ps); σ²e = 3.0, tol = 1e-10)

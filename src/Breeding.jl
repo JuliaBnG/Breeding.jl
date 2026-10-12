@@ -48,6 +48,7 @@ using Statistics
 using Random
 using SparseArrays
 using StatsBase
+using SelectedInversion: SelectedInversion, SupernodalMatrix, selinv, selinv_extract!, selinv_extract_setup
 
 include("util.jl")
 include("reproduction/reproduce.jl")
