@@ -15,15 +15,21 @@ covariance functions.
 mixed models:
 
 ```math
-\mathbf{y} = \mathbf{Xb} + \sum_{k} \mathbf{Z}_k \mathbf{u}_k + \mathbf{e}, \quad \operatorname{var}(\mathbf{u}_k) = \mathbf{G}_{0k} \otimes \mathbf{K}_k, \quad \operatorname{var}(\mathbf{e}) = \mathbf{I}\sigma^2_e
+\mathbf{y} = \mathbf{Xb} + \sum_{k} \mathbf{Z}_k \mathbf{u}_k + \mathbf{e}, \quad \operatorname{var}(\mathbf{u}_k) = \mathbf{G}_{0k} \otimes \mathbf{K}_k, \quad \operatorname{var}(\mathbf{e}) = \mathbf{R}
 ```
+
+with $\mathbf{R} = \mathbf{I}\sigma^2_e$ ([`Homogeneous`](@ref)) or
+$\mathbf{R} = \bigoplus_c \mathbf{I}_{n_c}\sigma^2_c$ for classes of
+records ([`HetClasses`](@ref)), e.g. classes of days in milk in a
+test-day random-regression model.
 
 ### Optimization Algorithms
 
 1. **Average Information (AI-REML)**:
-   Gilmour et al.'s (1995) algorithm replaces the expected information with the average of observed and expected information, computed efficiently using working variates $\mathbf{f}_i = (\partial \mathbf{V} / \partial \theta_i)\mathbf{P}\mathbf{y}$. Positive-definiteness is ensured via step halving.
+   Gilmour et al.'s (1995) algorithm replaces the expected information with the average of observed and expected information, computed efficiently using working variates $\mathbf{f}_i = (\partial \mathbf{V} / \partial \theta_i)\mathbf{P}\mathbf{y}$. Steps must not decrease the log-likelihood (step halving, EM step as fall-back).
 2. **EM-type updates (Mrode Eqns 17.5–17.6)**:
-   $\sigma^2_e = \mathbf{e}'\mathbf{y} / (n - p)$ and
+   $\sigma^2_e = \mathbf{e}'\mathbf{y} / (n - p)$ (residual classes:
+   $n_c\sigma^2_c = \mathbf{e}_c'\mathbf{e}_c + \operatorname{tr}(\mathbf{C}^{-1}\mathbf{W}_c'\mathbf{W}_c)$) and
    $\mathbf{G}_{0k} = (\hat{\mathbf{U}}_k'\mathbf{K}_k^{-1}\hat{\mathbf{U}}_k + \mathbf{T}_k)/q_k$.
    Estimates stay positive definite, but convergence is slow: in Mrode's
    Section 17.7 AI-REML converges in 5 rounds, while these updates are
@@ -38,6 +44,33 @@ res = reml(y, X, [RandomEffect(Z, ainv(ped), 0.2)]; σ²e = 0.4, method = :ai)
 G0_est  = res.G0[1]
 vc_cov  = res.AIinv  # approximate sampling covariance (inverse AI matrix)
 ```
+
+### Random regression with heterogeneous residual variances
+
+A random-regression term is a [`RandomEffect`](@ref) with one incidence
+matrix per regression coefficient, `Diagonal(Φ[:, c]) * Z`. Residual
+classes are given with [`HetClasses`](@ref):
+
+```julia
+Φ  = legendre(dim, 3)                     # or linear_spline(dim, knots)
+ga = RandomEffect([Diagonal(Φ[:, c]) * Z for c in 1:3], Ainv, G0)
+pe = RandomEffect([Diagonal(Φ[:, c]) * Zp for c in 1:3], I, P0)
+res = reml(y, X, [ga, pe]; residual = HetClasses(dim, [6:25, 26:93, 94:305], σ²),
+           param = :cholesky, ltol = 5e-4)
+res.residual                               # class variances
+```
+
+With `param = :cholesky` the AI steps are taken on the log-Cholesky
+scale (log residual variances; Cholesky factors of each $\mathbf{G}_{0k}$
+with log-transformed diagonals), so every iterate is positive definite.
+Gradient and AI matrix are computed for the covariances and transformed
+with the Jacobian. As in WOMBAT, the AI matrix is modified to be safely
+positive definite, steps that do not increase the log-likelihood are
+halved, and `ltol = 5e-4` stops when an AI step gains less than that in
+log-likelihood. Estimates on the boundary of the parameter space (a
+covariance matrix of reduced rank) are common for random regressions;
+there the likelihood is flat in some directions and the parameter-change
+criterion `tol` alone may need many iterates.
 
 ---
 

@@ -47,6 +47,9 @@ mtpblup
 ```@docs
 reml
 REMLResult
+ResidualStructure
+Homogeneous
+HetClasses
 gibbs
 gibbs_mt
 gibbs_sweep!

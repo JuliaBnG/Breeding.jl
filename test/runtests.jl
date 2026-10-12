@@ -273,4 +273,82 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
                       niter = 500, burnin = 100, rng = Xoshiro(4))
         @test size(gm.R) == (2, 2) && isposdef(gm.R) && isposdef(gm.G0[1])
     end
+    @testset "REML: random regression, heterogeneous residuals" begin
+        # simulated: 20 founders, 60 offspring with 6 records each on two
+        # Legendre coefficients; genetic, PE, 3 residual classes, 12 groups
+        rng = Xoshiro(2026)
+        nf, no, nr = 20, 60, 6
+        sire = [zeros(Int, nf); rand(rng, 1:2:nf, no)]
+        dam = [zeros(Int, nf); rand(rng, 2:2:nf, no)]
+        n = nf + no
+        Ai = sparse(ainv(DataFrame(sire = sire, dam = dam)))
+        A = inv(Matrix(Ai))
+        animal = repeat(nf+1:n, inner = nr)
+        t = repeat(1:nr, outer = no)
+        Φ = legendre(t, 2)
+        class = [x ≤ 2 ? 1 : x ≤ 4 ? 2 : 3 for x in t]
+        grp = t .+ nr .* (animal .% 2)
+        G0 = [4.0 1.0; 1.0 2.0]
+        P0 = [3.0 0.5; 0.5 1.0]
+        σ² = [2.0, 3.0, 5.0]
+        Ag = cholesky(Symmetric(A)).L * randn(rng, n, 2) * cholesky(G0).U
+        Pp = randn(rng, no, 2) * cholesky(P0).U
+        y = [sum(Φ[r, c] * (Ag[animal[r], c] + Pp[animal[r]-nf, c]) for c in 1:2) + grp[r] +
+             sqrt(σ²[class[r]]) * randn(rng) for r in eachindex(t)]
+        X, _ = incidence(grp)
+        Za = incidence(animal, n)
+        Zp = incidence(animal .- nf, no)
+        effs(G, P) = [RandomEffect([Diagonal(Φ[:, c]) * Za for c in 1:2], Ai, G),
+                      RandomEffect([Diagonal(Φ[:, c]) * Zp for c in 1:2], I, P)]
+        res = HetClasses(t, [1:2, 3:4, 5:6], [2.5, 2.5, 4.0])
+        @test res.class == class
+        @test_throws ArgumentError HetClasses(t, [1:2, 3:4], [1.0, 1.0])
+        @test_throws ArgumentError HetClasses([1, 1, 3], [1.0, 1.0, 1.0])
+
+        # log-likelihood equals its dense definition
+        Gs, Ps, ss = [3.5 0.8; 0.8 1.5], [2.5 0.3; 0.3 1.2], [2.5, 2.5, 4.0]
+        Zg = reduce(hcat, [Diagonal(Φ[:, c]) * Za for c in 1:2])
+        Zq = reduce(hcat, [Diagonal(Φ[:, c]) * Zp for c in 1:2])
+        V = Zg * kron(Gs, A) * Zg' + Zq * kron(Ps, Matrix(1.0I, no, no)) * Zq' +
+            Diagonal(ss[class])
+        Vi = inv(Symmetric(Matrix(V)))
+        Xd = Matrix(X)                            # full column rank (one column per group)
+        P = Vi - Vi * Xd * ((Xd' * Vi * Xd) \ (Xd' * Vi))
+        Ld = -0.5 * (y' * P * y + logdet(Symmetric(Matrix(V))) + logdet(Symmetric(Xd' * Vi * Xd)))
+        @test reml(y, X, effs(Gs, Ps); residual = res, maxiter = 0).logL ≈ Ld
+
+        # AI (natural and Cholesky scale) and EM reach the same maximum
+        fit(; kw...) = reml(y, X, effs(Gs, Ps); residual = HetClasses(class, ss), kw...)
+        rn = fit(; tol = 1e-10)
+        rc = fit(; param = :cholesky, tol = 1e-10)
+        re = fit(; method = :em, tol = 1e-12, maxiter = 5000)
+        θn = rn.history[:, end]
+        @test rc.logL ≈ rn.logL atol = 1e-6
+        @test rc.history[:, end] ≈ θn rtol = 1e-4
+        @test re.logL ≈ rn.logL atol = 1e-3           # EM converges slowly
+        @test re.history[:, end] ≈ θn rtol = 1e-2
+        @test rn.residual == θn[1:3] && isnan(rn.σ²e)
+        @test rn.G0[1] ≈ [θn[4] θn[5]; θn[5] θn[6]]
+        @test size(rn.AIinv) == (9, 9) && isposdef(Symmetric(rn.AIinv))
+        @test rn.iterations < 30 && rc.iterations < 30
+
+        # stationary point: central finite differences of logL vanish
+        function L(θ)
+            G = [θ[4] θ[5]; θ[5] θ[6]]
+            Pm = [θ[7] θ[8]; θ[8] θ[9]]
+            reml(y, X, effs(G, Pm); residual = HetClasses(class, θ[1:3]), maxiter = 0).logL
+        end
+        g = [(h = 1e-4 * max(1, abs(θn[i])); e = zeros(9); e[i] = h; (L(θn + e) - L(θn - e)) / 2h)
+             for i in 1:9]
+        @test maximum(abs.(g) .* max.(1, abs.(θn))) < 1e-3
+
+        # one class and Homogeneous agree with the σ²e form
+        h1 = reml(y, X, effs(Gs, Ps); σ²e = 3.0, tol = 1e-10)
+        h2 = reml(y, X, effs(Gs, Ps); residual = Homogeneous(3.0), tol = 1e-10)
+        h3 = reml(y, X, effs(Gs, Ps); residual = HetClasses(ones(Int, length(y)), [3.0]),
+                  tol = 1e-10)
+        @test h1.history[:, end] ≈ h2.history[:, end]
+        @test h3.logL ≈ h1.logL atol = 1e-6
+        @test h1.σ²e ≈ h1.residual[1]
+    end
 end
