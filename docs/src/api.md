@@ -33,6 +33,7 @@ rhs
 
 ```@docs
 incidence
+nested
 legendre
 linear_spline
 mt_blocks
@@ -50,6 +51,7 @@ REMLResult
 ResidualStructure
 Homogeneous
 HetClasses
+MultiTrait
 gibbs
 gibbs_mt
 gibbs_sweep!
