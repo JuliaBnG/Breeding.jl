@@ -42,8 +42,12 @@ whose squares have expectations ``\\sigma^2_e + w_i\\sigma^2_s``. Returns
 residual sum of squares `R` with `dfR` degrees of freedom; feed them to
 [`fit_mean_squares`](@ref).
 """
-function sire_contrasts(y::AbstractVector, X::AbstractMatrix, Z::AbstractMatrix,
-                        A::AbstractMatrix)
+function sire_contrasts(
+    y::AbstractVector,
+    X::AbstractMatrix,
+    Z::AbstractMatrix,
+    A::AbstractMatrix,
+)
     h = henderson3(y, X, Z; A = A)
     B = Symmetric(h.ZSZ)
     E = eigen(B)
@@ -70,13 +74,20 @@ otherwise generalized least squares is iterated with
 estimates (Mrode Section 17.5). Returns the estimates and their
 sampling covariance matrix ``(C'V^{-1}C)^{-1}``.
 """
-function fit_mean_squares(ms::AbstractVector, df::AbstractVector, coef::AbstractMatrix;
-                          weighted = true, tol = 1e-10, maxiter = 1000)
+function fit_mean_squares(
+    ms::AbstractVector,
+    df::AbstractVector,
+    coef::AbstractMatrix;
+    weighted = true,
+    tol = 1e-10,
+    maxiter = 1000,
+)
     C = Matrix{Float64}(coef)
     θ = C \ ms
-    weighted || return θ, inv(C'C) * (sum(abs2, ms - C * θ) / max(1, length(ms) - size(C, 2)))
+    weighted ||
+        return θ, inv(C'C) * (sum(abs2, ms - C * θ) / max(1, length(ms) - size(C, 2)))
     V = Diagonal(2 .* (C * θ) .^ 2 ./ df)
-    for _ in 1:maxiter
+    for _ = 1:maxiter
         V = Diagonal(2 .* (C * θ) .^ 2 ./ df)
         θn = (C' * (V \ C)) \ (C' * (V \ ms))
         done = maximum(abs, θn - θ) < tol

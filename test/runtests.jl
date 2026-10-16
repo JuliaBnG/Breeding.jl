@@ -56,8 +56,12 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
     @testset "MME, solvers and accuracies (Example 4.1)" begin
         m = mme(WWG, X, [a]; σ²e = 40.0)
         x = solve_mme(m)
-        @test all(abs.(x - [4.358, 3.404, 0.098, -0.019, -0.041, -0.009, -0.186, 0.177,
-                            -0.249, 0.183]) .< 6e-4)
+        @test all(
+            abs.(
+                x -
+                [4.358, 3.404, 0.098, -0.019, -0.041, -0.009, -0.186, 0.177, -0.249, 0.183],
+            ) .< 6e-4,
+        )
         # the R⁻¹ form gives the same solutions
         mr = mme(WWG, X, [a]; Rinv = fill(1 / 40, 5))
         @test solve_mme(mr) ≈ x
@@ -70,7 +74,8 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
             @test solve_mme(m; method, tol = 1e-26, maxiter = 10_000) ≈ x atol = 1e-10
         end
         @test solve_mme(m; method = :sor, ω = 1.1, tol = 1e-26) ≈ x atol = 1e-10
-        @test first(jacobi(m.lhs, m.rhs; ω = [1; 1; fill(0.8, 8)], tol = 1e-26)) ≈ x atol = 1e-10
+        @test first(jacobi(m.lhs, m.rhs; ω = [1; 1; fill(0.8, 8)], tol = 1e-26)) ≈ x atol =
+            1e-10
         x0, it0, conv0 = pcg(sparse([2.0 0; 0 3]), zeros(2))
         @test x0 == zeros(2) && it0 == 0 && conv0 == 0
         xwarm, itwarm, convwarm = pcg(m.lhs, m.rhs; x0 = x)
@@ -105,6 +110,7 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         A[1, 2:end] .= NaN
         @test first(pcg(A, m.rhs)) ≈ x
         @test first(pcg(permutedims(A), m.rhs; uplo = :U)) ≈ x
+        @test first(pcg(permutedims(A), m.rhs; uplo = 'U')) ≈ x
     end
 
     @testset "mtpblup" begin
@@ -118,7 +124,8 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         @test ped.ebv_a ≈ solve_mme(m1)[2:end] atol = 1e-8
         # two traits: the equations of mme with R⁻¹ = diag(1/σ²e), σ²e = G_tt(1-h²)/h²
         # (a non-symmetric G⁻¹Λ penalty used to be fed to CG)
-        ped.ft_b = Union{Missing,Float64}[missing, missing, missing, 1.0, 2.5, missing, 0.5, 3.0]
+        ped.ft_b =
+            Union{Missing,Float64}[missing, missing, missing, 1.0, 2.5, missing, 0.5, 3.0]
         ped.ebv_b = zeros(8)
         trts = [Trait("a"; h² = 1 / 3), Trait("b"; h² = 0.25)]
         G = [20.0 5; 5 10]
@@ -132,9 +139,26 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         Zs2 = [[Zo; spzeros(4, 8)], [spzeros(4, 8); Zo]]
         Xo = kron(I(2), ones(4))
         σ²e = [40.0, 30.0]
-        mm = mme([ped.ft_a[ob]; ped.ft_b[ob]], Xo, [RandomEffect(Zs2, Ais, G)];
-                 Rinv = repeat(1 ./ σ²e; inner = 4))
+        mm = mme(
+            [ped.ft_a[ob]; ped.ft_b[ob]],
+            Xo,
+            [RandomEffect(Zs2, Ais, G)];
+            Rinv = repeat(1 ./ σ²e; inner = 4),
+        )
         @test [p2.ebv_a; p2.ebv_b] ≈ solve_mme(mm)[3:end]
+        # auto-creation of EBV columns when absent, and validation on empty records
+        p_no_ebv = select(ped, Not([:ebv_a, :ebv_b]))
+        mtpblup(p_no_ebv, trts, Ais, G)
+        @test p_no_ebv.ebv_a ≈ ped.ebv_a atol = 1e-8
+        @test p_no_ebv.ebv_b ≈ ped.ebv_b atol = 1e-8
+        p_empty = copy(ped)
+        p_empty.ft_a .= missing
+        @test_throws ArgumentError mtpblup(p_empty, trts, Ais, G)
+        # a missing EBV column does not discard the other trait's warm start
+        p_half = select(ped, Not(:ebv_b))
+        mtpblup(p_half, trts, Ais, G)
+        @test p_half.ebv_a ≈ ped.ebv_a atol = 1e-8
+        @test p_half.ebv_b ≈ ped.ebv_b atol = 1e-8
     end
 
     @testset "Z'Z, batches and haplotypes" begin
@@ -145,8 +169,10 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         ref = Float64.(D)' * Float64.(D)
         @test zpz_hap!(zeros(m, m), H) == ref
         @test zpz_hap!(zeros(m, m), Matrix(H)) == ref
+        @test zpz_hap!(zeros(m, m), Int8.(H)) == ref
+        @test_throws ArgumentError zpz_hap!(zeros(m, m), Int8.(2H))
         Hc = falses(n, 2m) # individuals × locus haplotypes
-        for k in 1:n, i in 1:m
+        for k = 1:n, i = 1:m
             Hc[k, 2i-1], Hc[k, 2i] = H[i, 2k-1], H[i, 2k]
         end
         @test zpz_hap!(zeros(m, m), Hc; loci = :cols) == ref
@@ -158,7 +184,9 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         @test zpz!(ZZ, D[71:end, :]; accumulate = true) == ref
         @test zpz!(zeros(Int, m, m), D) == ref
         @test_throws DimensionMismatch zpz!(zeros(m - 1, m - 1), D)
+        @test_throws ArgumentError zpz!(zeros(m, m), D; rows = 0)
         @test_throws ArgumentError zpz_hap!(zeros(m, m), H[:, 1:3])
+        @test_throws ArgumentError zpz_hap!(zeros(m, m), H; block = 0)
     end
 
     @testset "Iteration on data and partitions" begin
@@ -175,15 +203,21 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         @test first(gauss_seidel(iod; tol = 1e-26)) ≈ x atol = 1e-10
         @test first(pcg(iod, rhs(iod); M = diag(iod), tol = 1e-12)) ≈ x atol = 1e-8
         # n₁PA + n₂YD + n₃PC reproduces the solutions
-        nrec = [i in CALF ? 1 : 0 for i in 1:8]
+        nrec = [i in CALF ? 1 : 0 for i = 1:8]
         yd = zeros(8)
         yd[CALF] = WWG - [x[1], x[2], x[2], x[1], x[1]]
         p = ebv_partition(SIRE, DAM, 2.0, nrec, yd, x[3:end])
         @test p.n1 .* p.PA + p.n2 .* p.YD + p.n3 .* replace(p.PC, NaN => 0) ≈ x[3:end]
         @test p.n1 + p.n2 + p.n3 ≈ ones(8)
         # multivariate partition with one trait equals the univariate one
-        pm = ebv_partition_mt(SIRE, DAM, fill(20.0, 1, 1), [fill(n / 40, 1, 1) for n in nrec],
-                              reshape(yd, :, 1), reshape(x[3:end], :, 1))
+        pm = ebv_partition_mt(
+            SIRE,
+            DAM,
+            fill(20.0, 1, 1),
+            [fill(n / 40, 1, 1) for n in nrec],
+            reshape(yd, :, 1),
+            reshape(x[3:end], :, 1),
+        )
         @test [w[1] for w in pm.W1] ≈ p.n1
         @test [d[1] for d in pm.DYD][3] ≈ p.DYD[3]
     end
@@ -201,7 +235,10 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
 
     @testset "Pedigree methods (RelationshipMatrices)" begin
         # inbred pedigree; parents are not the first rows
-        ped = DataFrame(sire = [0, 0, 0, 1, 1, 4, 4, 0, 6, 6], dam = [0, 0, 0, 2, 3, 5, 5, 0, 7, 8])
+        ped = DataFrame(
+            sire = [0, 0, 0, 1, 1, 4, 4, 0, 6, 6],
+            dam = [0, 0, 0, 2, 3, 5, 5, 0, 7, 8],
+        )
         rec = [4, 5, 6, 7, 9, 10]
         yy = [3.0, 2.5, 4.1, 3.3, 2.2, 3.9]
         α = 2.5
@@ -243,19 +280,27 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         λ = 3.0
         # SNP-BLUP and GBLUP agree; SNP effects are recovered from GBLUP
         msnp = mme(y, ones(8, 1), [RandomEffect(Zc[ref, :], I, 1 / k)]; σ²e = λ)
-        mg = mme(y, ones(8, 1), [RandomEffect(incidence(ref, 12), inv(Zc * Zc' / k + 1e-9I),
-                                              1.0)]; σ²e = λ)
+        mg = mme(
+            y,
+            ones(8, 1),
+            [RandomEffect(incidence(ref, 12), inv(Zc * Zc' / k + 1e-9I), 1.0)];
+            σ²e = λ,
+        )
         xs, xg = solve_mme(msnp), solve_mme(mg)
         @test xs[1] ≈ xg[1] atol = 1e-6
         @test Zc * xs[2:end] ≈ xg[2:end] atol = 1e-5
-        @test snp_from_gblup(Zc, inv(Zc * Zc' / k + 1e-9I), xg[2:end]; k) ≈ xs[2:end] atol = 1e-5
+        @test snp_from_gblup(Zc, inv(Zc * Zc' / k + 1e-9I), xg[2:end]; k) ≈ xs[2:end] atol =
+            1e-5
         dgv, rel = gblup_index(G, ref, y .- xg[1], λ)
         @test length(dgv) == 12 && all(0 .≤ rel .≤ 1)
         H = rand(rng, 0:1, 10, 6)
         P, al = pseudo_snps(H, [1:3, 4:6])
         @test all(sum(P[:, 1:length(al[1])]; dims = 2) .== 2)
-        p0, μ, dd = base_allele_frequencies(M[1:4, :], sparse(ainv_ref(zeros(Int, 6),
-                                                                       zeros(Int, 6))), 3:6)
+        p0, μ, dd = base_allele_frequencies(
+            M[1:4, :],
+            sparse(ainv_ref(zeros(Int, 6), zeros(Int, 6))),
+            3:6,
+        )
         @test μ ≈ vec(mean(M[1:4, :]; dims = 1)) atol = 0.05
     end
 
@@ -266,8 +311,15 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         g[[2, 7]] = [1.0, -1.0]
         y = 5 .+ Mg * g + 0.5randn(rng, 60)
         for method in (:A, :B, :C, :Cpi)
-            r = bayes_snp(y, ones(60, 1), Mg; method, niter = 3000, burnin = 1000,
-                          rng = Xoshiro(1))
+            r = bayes_snp(
+                y,
+                ones(60, 1),
+                Mg;
+                method,
+                niter = 3000,
+                burnin = 1000,
+                rng = Xoshiro(1),
+            )
             @test all(isfinite, r.g) && r.σ²e > 0
             @test r.g[2] > 0.5 && r.g[7] < -0.5
         end
@@ -278,16 +330,53 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         herd = [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
         sex = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 2, 1]
         sire = [1, 1, 1, 2, 2, 2, 3, 3, 3, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 4]
-        N = [1 0 0; 1 0 0; 1 0 0; 0 1 0; 1 0 1; 3 0 0; 1 1 0; 0 1 0; 1 0 0; 2 0 0; 1 0 0;
-             0 0 1; 1 0 1; 1 0 0; 0 1 0; 0 0 1; 0 1 0; 1 0 0; 2 0 0; 2 0 0]
+        N = [
+            1 0 0;
+            1 0 0;
+            1 0 0;
+            0 1 0;
+            1 0 1;
+            3 0 0;
+            1 1 0;
+            0 1 0;
+            1 0 0;
+            2 0 0;
+            1 0 0;
+            0 0 1;
+            1 0 1;
+            1 0 0;
+            0 1 0;
+            0 0 1;
+            0 1 0;
+            1 0 0;
+            2 0 0;
+            2 0 0
+        ]
         Xt = [first(incidence(herd)) first(incidence(sex))]
         Zt = first(incidence(sire))
-        r = threshold_model(N, Xt, Zt, ainv_ref([0, 0, 1, 3], [0, 0, 0, 0]), 19;
-                            t0 = [0.468, 1.080], zero = [1, 3])
-        @test r.history[:, 1] ≈ [0.441008, 1.044792, 0, 0.286869, 0, -0.358323, -0.041528,
-                                 0.057853, 0.039850, -0.065178] atol = 1e-5
-        @test round.([r.t; r.u], digits = 4) ≈ [0.4378, 1.0675, -0.0434, 0.0592, 0.0412,
-                                                -0.0660]
+        r = threshold_model(
+            N,
+            Xt,
+            Zt,
+            ainv_ref([0, 0, 1, 3], [0, 0, 0, 0]),
+            19;
+            t0 = [0.468, 1.080],
+            zero = [1, 3],
+        )
+        @test r.history[:, 1] ≈ [
+            0.441008,
+            1.044792,
+            0,
+            0.286869,
+            0,
+            -0.358323,
+            -0.041528,
+            0.057853,
+            0.039850,
+            -0.065178,
+        ] atol = 1e-5
+        @test round.([r.t; r.u], digits = 4) ≈
+              [0.4378, 1.0675, -0.0434, 0.0592, 0.0412, -0.0660]
         P = category_probabilities(r.t, [0.0, 1.0])
         @test sum(P; dims = 2) ≈ ones(2)
     end
@@ -327,24 +416,61 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         Vi = inv(V)
         P = Vi - Vi * X * ((X' * Vi * X) \ (X' * Vi))
         Ld = -0.5 * (y2' * P * y2 + logdet(V) + logdet(X' * Vi * X))
-        r1 = reml(y2, X, [RandomEffect(Z, sparse(Ai), r.G0[1][1])]; σ²e = r.σ²e, maxiter = 1)
+        r1 =
+            reml(y2, X, [RandomEffect(Z, sparse(Ai), r.G0[1][1])]; σ²e = r.σ²e, maxiter = 1)
         @test r1.logLs[1] ≈ Ld
 
         # Gibbs: with variances fixed, posterior means → BLUP
         blup = solve_mme(mme(WWG, X, [a]; σ²e = 40.0))
-        means = reduce(hcat, [gibbs(WWG, X, [a]; σ²e = 40.0, estimate_variances = false,
-                                    niter = 20_000, burnin = 500, rng = Xoshiro(s)).x
-                              for s in 1:6])
-        z = abs.(vec(mean(means; dims = 2)) - blup) ./
+        means = reduce(
+            hcat,
+            [
+                gibbs(
+                    WWG,
+                    X,
+                    [a];
+                    σ²e = 40.0,
+                    estimate_variances = false,
+                    niter = 20_000,
+                    burnin = 500,
+                    rng = Xoshiro(s),
+                ).x for s = 1:6
+            ],
+        )
+        z =
+            abs.(vec(mean(means; dims = 2)) - blup) ./
             (vec(std(means; dims = 2)) ./ sqrt(6))
         @test maximum(z) < 5
-        g = gibbs(WWG, X, [a]; σ²e = 40.0, νe = 4, Se = 40.0, νu = [4],
-                  Vu = [fill(80.0, 1, 1)], niter = 2000, burnin = 200, rng = Xoshiro(9))
+        g = gibbs(
+            WWG,
+            X,
+            [a];
+            σ²e = 40.0,
+            νe = 4,
+            Se = 40.0,
+            νu = [4],
+            Vu = [fill(80.0, 1, 1)],
+            niter = 2000,
+            burnin = 200,
+            rng = Xoshiro(9),
+        )
         @test g.nsample == 1800 && all(>(0), g.samples)
         Y = [WWG WWG .+ randn(Xoshiro(2), 5)]
-        gm = gibbs_mt(Y, X, Z, sparse(Ai); R0 = [40.0 10; 10 30], G0 = [20.0 5; 5 20],
-                      νe = 10, Ve = [40.0 10; 10 30] * 7, νu = 10, Vu = [20.0 5; 5 20] * 7,
-                      niter = 500, burnin = 100, rng = Xoshiro(4))
+        gm = gibbs_mt(
+            Y,
+            X,
+            Z,
+            sparse(Ai);
+            R0 = [40.0 10; 10 30],
+            G0 = [20.0 5; 5 20],
+            νe = 10,
+            Ve = [40.0 10; 10 30] * 7,
+            νu = 10,
+            Vu = [20.0 5; 5 20] * 7,
+            niter = 500,
+            burnin = 100,
+            rng = Xoshiro(4),
+        )
         @test size(gm.R) == (2, 2) && isposdef(gm.R) && isposdef(gm.G0[1])
     end
 end

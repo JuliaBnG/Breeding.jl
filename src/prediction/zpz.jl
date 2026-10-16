@@ -15,16 +15,25 @@ differs (e.g. `Int8` dosages), and then mirrored to the upper
 triangle. Integer dosages give exact sums, so accumulating over batches
 gives the same `ZZ` as one call on all rows.
 """
-function zpz!(ZZ::AbstractMatrix, Z::AbstractMatrix; accumulate::Bool = false,
-              rows::Integer = 1024)
+function zpz!(
+    ZZ::AbstractMatrix,
+    Z::AbstractMatrix;
+    accumulate::Bool = false,
+    rows::Integer = 1024,
+)
+    rows ≥ 1 || throw(ArgumentError("rows must be positive, got $rows"))
     n, m = size(Z)
     size(ZZ) == (m, m) || throw(DimensionMismatch("ZZ must be $m × $m"))
     _zpz!(ZZ, Z, accumulate, rows)
     _mirror_lower!(ZZ)
 end
 
-function _zpz!(ZZ::StridedMatrix{T}, Z::AbstractMatrix, accumulate, rows) where
-         {T<:LinearAlgebra.BlasFloat}
+function _zpz!(
+    ZZ::StridedMatrix{T},
+    Z::AbstractMatrix,
+    accumulate,
+    rows,
+) where {T<:LinearAlgebra.BlasFloat}
     if Z isa StridedMatrix{T}
         BLAS.syrk!('L', 'T', one(T), Z, accumulate ? one(T) : zero(T), ZZ)
         return ZZ
@@ -32,10 +41,10 @@ function _zpz!(ZZ::StridedMatrix{T}, Z::AbstractMatrix, accumulate, rows) where
     n = size(Z, 1)
     accumulate || fill!(ZZ, zero(T))
     buf = Matrix{T}(undef, min(rows, n), size(Z, 2))
-    for r in 1:rows:n
+    for r = 1:rows:n
         k = min(rows, n - r + 1)
         B = view(buf, 1:k, :)
-        copyto!(B, view(Z, r:r+k-1, :))
+        copyto!(B, view(Z, r:(r+k-1), :))
         BLAS.syrk!('L', 'T', one(T), B, one(T), ZZ)
     end
     ZZ
@@ -48,8 +57,8 @@ end
 
 function _mirror_lower!(ZZ)
     m = size(ZZ, 1)
-    Threads.@threads for j in 2:m
-        @inbounds for i in 1:j-1
+    Threads.@threads for j = 2:m
+        @inbounds for i = 1:(j-1)
             ZZ[i, j] = ZZ[j, i]
         end
     end
@@ -72,21 +81,35 @@ Layout of `H`:
 - `loci = :cols` – `n × 2m`, columns `2i-1` and `2i` the two haplotypes
   at locus `i`.
 
+`H` may also be an integer matrix of 0/1 alleles; it is packed into a
+`BitMatrix` first, and any other value (e.g. dosages `0, 1, 2`, which
+belong in [`zpz!`](@ref)) throws an `ArgumentError`.
+
 The lower triangle is computed in `block × block` tiles in parallel
 over threads and mirrored to the upper one.
 """
-function zpz_hap!(ZZ::AbstractMatrix, H::AbstractMatrix{Bool}; accumulate::Bool = false,
-                  loci::Symbol = :rows, block::Integer = 128)
+function zpz_hap!(
+    ZZ::AbstractMatrix,
+    H::AbstractMatrix{Bool};
+    accumulate::Bool = false,
+    loci::Symbol = :rows,
+    block::Integer = 128,
+)
+    block ≥ 1 || throw(ArgumentError("block must be positive, got $block"))
     loci in (:rows, :cols) || throw(ArgumentError("loci must be :rows or :cols"))
     r, c = size(H)
-    iseven(c) || throw(ArgumentError("H must have two columns per $(loci == :rows ? "individual" : "locus")"))
+    iseven(c) || throw(
+        ArgumentError(
+            "H must have two columns per $(loci == :rows ? "individual" : "locus")",
+        ),
+    )
     m = loci == :rows ? r : c ÷ 2
     size(ZZ) == (m, m) || throw(DimensionMismatch("ZZ must be $m × $m"))
 
     # bit chunks of haplotype 1 and 2 at every locus, over individuals
     h1 = Vector{Vector{UInt64}}(undef, m)
     h2 = Vector{Vector{UInt64}}(undef, m)
-    Threads.@threads for i in 1:m
+    Threads.@threads for i = 1:m
         if loci == :rows
             h1[i] = BitVector(view(H, i, 1:2:c)).chunks
             h2[i] = BitVector(view(H, i, 2:2:c)).chunks
@@ -97,23 +120,32 @@ function zpz_hap!(ZZ::AbstractMatrix, H::AbstractMatrix{Bool}; accumulate::Bool 
     end
 
     nb = cld(m, block)
-    tiles = [(ib, jb) for jb in 1:nb for ib in jb:nb]
+    tiles = [(ib, jb) for jb = 1:nb for ib = jb:nb]
     Threads.@threads :dynamic for t in eachindex(tiles)
         ib, jb = tiles[t]
-        for j in (jb-1)*block+1:min(jb * block, m)
+        for j = ((jb-1)*block+1):min(jb*block, m)
             v1, v2 = h1[j], h2[j]
-            for i in (ib == jb ? j : (ib - 1) * block + 1):min(ib * block, m)
+            for i = (ib==jb ? j : (ib-1)*block+1):min(ib*block, m)
                 u1, u2 = h1[i], h2[i]
                 s = 0
                 @inbounds for w in eachindex(u1)
                     a, b = u1[w], u2[w]
                     x, y = v1[w], v2[w]
-                    s += count_ones(a & x) + count_ones(a & y) +
-                         count_ones(b & x) + count_ones(b & y)
+                    s +=
+                        count_ones(a & x) +
+                        count_ones(a & y) +
+                        count_ones(b & x) +
+                        count_ones(b & y)
                 end
                 @inbounds ZZ[i, j] = accumulate ? ZZ[i, j] + s : s
             end
         end
     end
     _mirror_lower!(ZZ)
+end
+
+function zpz_hap!(ZZ::AbstractMatrix, H::AbstractMatrix{<:Integer}; kw...)
+    all(x -> x == 0 || x == 1, H) ||
+        throw(ArgumentError("H must hold 0/1 alleles; use zpz! for dosages"))
+    zpz_hap!(ZZ, BitMatrix(H .== 1); kw...)
 end

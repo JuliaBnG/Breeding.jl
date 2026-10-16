@@ -15,8 +15,14 @@ variance (Mrode's form), `1` for unscaled equations. Equations in `skip`
 are left unchanged (constraints). `C` must be symmetric; row `j` is read
 from column `j`.
 """
-function gibbs_sweep!(x::AbstractVector, C::SparseMatrixCSC, r::AbstractVector;
-                      scale = 1.0, skip = Int[], rng::AbstractRNG = Random.default_rng())
+function gibbs_sweep!(
+    x::AbstractVector,
+    C::SparseMatrixCSC,
+    r::AbstractVector;
+    scale = 1.0,
+    skip = Int[],
+    rng::AbstractRNG = Random.default_rng(),
+)
     rv, nz, cp = rowvals(C), nonzeros(C), C.colptr
     sk = falses(length(x))
     sk[skip] .= true
@@ -24,7 +30,7 @@ function gibbs_sweep!(x::AbstractVector, C::SparseMatrixCSC, r::AbstractVector;
         sk[j] && continue
         s = r[j]
         d = 0.0
-        for p in cp[j]:cp[j+1]-1
+        for p = cp[j]:(cp[j+1]-1)
             i = rv[p]
             i == j ? (d = nz[p]) : (s -= nz[p] * x[i])
         end
@@ -80,11 +86,22 @@ are kept every `thin` rounds. With `estimate_variances = false` the
 variances stay at their starting values, and the posterior means of the
 location parameters converge to the BLUP solutions.
 """
-function gibbs(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:RandomEffect};
-               σ²e::Real, νe::Real = -2, Se::Real = 0.0, νu = nothing, Vu = nothing,
-               zero = Int[], niter::Integer = 10_000, burnin::Integer = 1_000,
-               thin::Integer = 1, estimate_variances::Bool = true,
-               rng::AbstractRNG = Random.default_rng())
+function gibbs(
+    y::AbstractVector,
+    X::AbstractMatrix,
+    effects::AbstractVector{<:RandomEffect};
+    σ²e::Real,
+    νe::Real = -2,
+    Se::Real = 0.0,
+    νu = nothing,
+    Vu = nothing,
+    zero = Int[],
+    niter::Integer = 10_000,
+    burnin::Integer = 1_000,
+    thin::Integer = 1,
+    estimate_variances::Bool = true,
+    rng::AbstractRNG = Random.default_rng(),
+)
     n = length(y)
     yv = Vector{Float64}(y)
     W = SparseMatrixCSC{Float64,Int}(hcat(sparse(X), (r.Z for r in effects)...))
@@ -93,7 +110,7 @@ function gibbs(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:R
     blocks = UnitRange{Int}[]
     o = p
     for r in effects
-        push!(blocks, o+1:o+size(r.Z, 2))
+        push!(blocks, (o+1):(o+size(r.Z, 2)))
         o += size(r.Z, 2)
     end
     ms = [ncomponents(r) for r in effects]
@@ -108,9 +125,11 @@ function gibbs(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:R
     Rs = 0.0
     Gs = [zeros(m, m) for m in ms]
     samples = Vector{Float64}[]
-    for it in 1:niter
-        pen = blockdiag(spzeros(p, p),
-                        (kron(sparse(inv(Symmetric(G0[k]))), Kis[k]) for k in eachindex(effects))...)
+    for it = 1:niter
+        pen = blockdiag(
+            spzeros(p, p),
+            (kron(sparse(inv(Symmetric(G0[k]))), Kis[k]) for k in eachindex(effects))...,
+        )
         C = WW ./ ve + pen
         gibbs_sweep!(x, C, Wy ./ ve; skip = zero, rng = rng)
         if estimate_variances
@@ -128,12 +147,22 @@ function gibbs(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:R
             xs .+= x
             Rs += ve
             Gs .+= G0
-            push!(samples, [ve; reduce(vcat, [[G[i, j] for (i, j) in _vech(size(G, 1))]
-                                              for G in G0])])
+            push!(
+                samples,
+                [
+                    ve;
+                    reduce(vcat, [[G[i, j] for (i, j) in _vech(size(G, 1))] for G in G0])
+                ],
+            )
         end
     end
-    GibbsResult(xs ./ nsave, fill(Rs / nsave, 1, 1), Gs ./ nsave, reduce(hcat, samples),
-                nsave)
+    GibbsResult(
+        xs ./ nsave,
+        fill(Rs / nsave, 1, 1),
+        Gs ./ nsave,
+        reduce(hcat, samples),
+        nsave,
+    )
 end
 
 """
@@ -156,14 +185,26 @@ V_u)`` (Eqns 18.25–18.26). The defaults are uniform priors;
 `estimate_variances = false` keeps `R0` and `G0` fixed. In the result,
 `x` holds `vec([B; U])` (levels in rows, traits in columns).
 """
-function gibbs_mt(Y::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix,
-                  Kinv::AbstractMatrix; R0::AbstractMatrix, G0::AbstractMatrix,
-                  νe = nothing, Ve = nothing, νu = nothing, Vu = nothing,
-                  niter::Integer = 10_000, burnin::Integer = 1_000, thin::Integer = 1,
-                  estimate_variances::Bool = true, rng::AbstractRNG = Random.default_rng())
+function gibbs_mt(
+    Y::AbstractMatrix,
+    X::AbstractMatrix,
+    Z::AbstractMatrix,
+    Kinv::AbstractMatrix;
+    R0::AbstractMatrix,
+    G0::AbstractMatrix,
+    νe = nothing,
+    Ve = nothing,
+    νu = nothing,
+    Vu = nothing,
+    niter::Integer = 10_000,
+    burnin::Integer = 1_000,
+    thin::Integer = 1,
+    estimate_variances::Bool = true,
+    rng::AbstractRNG = Random.default_rng(),
+)
     n, t = size(Y)
     miss = map(v -> ismissing(v) || (v isa AbstractFloat && isnan(v)), Y)
-    Yc = [miss[i, j] ? 0.0 : Float64(Y[i, j]) for i in 1:n, j in 1:t]
+    Yc = [miss[i, j] ? 0.0 : Float64(Y[i, j]) for i = 1:n, j = 1:t]
     Xs, Zs = sparse(Matrix{Float64}(X)), SparseMatrixCSC{Float64,Int}(Z)
     K = Kinv isa SparseMatrixCSC ? SparseMatrixCSC{Float64,Int}(Kinv) : sparse(Kinv)
     p, q = size(X, 2), size(Z, 2)
@@ -180,9 +221,9 @@ function gibbs_mt(Y::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix,
     xs = zeros((p + q) * t)
     Rs, Gs = zeros(t, t), zeros(t, t)
     samples = Vector{Float64}[]
-    for it in 1:niter
+    for it = 1:niter
         # data augmentation of missing records
-        for i in 1:n
+        for i = 1:n
             any(view(miss, i, :)) || continue
             o, m = findall(.!miss[i, :]), findall(miss[i, :])
             μ = Yc[i, :] - E[i, :]                    # current fitted values
@@ -198,7 +239,7 @@ function gibbs_mt(Y::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix,
             Yc[i, m] = new
         end
         Ri, Gi = inv(Symmetric(R)), inv(Symmetric(G))
-        for k in 1:p                                   # fixed effects, Eqn 18.23
+        for k = 1:p                                   # fixed effects, Eqn 18.23
             rows, vals = rowvals(Xs)[nzrange(Xs, k)], nonzeros(Xs)[nzrange(Xs, k)]
             s = zeros(t)
             for (i, v) in zip(rows, vals)
@@ -211,7 +252,7 @@ function gibbs_mt(Y::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix,
             end
             B[k, :] = new
         end
-        for j in 1:q                                   # animals, Eqn 18.24
+        for j = 1:q                                   # animals, Eqn 18.24
             rows, vals = rowvals(Zs)[nzrange(Zs, j)], nonzeros(Zs)[nzrange(Zs, j)]
             s = zeros(t)
             for (i, v) in zip(rows, vals)
@@ -239,7 +280,10 @@ function gibbs_mt(Y::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix,
             xs .+= vec([B; U])
             Rs .+= R
             Gs .+= G
-            push!(samples, [[R[i, j] for (i, j) in _vech(t)]; [G[i, j] for (i, j) in _vech(t)]])
+            push!(
+                samples,
+                [[R[i, j] for (i, j) in _vech(t)]; [G[i, j] for (i, j) in _vech(t)]],
+            )
         end
     end
     GibbsResult(xs ./ nsave, Rs ./ nsave, [Gs ./ nsave], reduce(hcat, samples), nsave)

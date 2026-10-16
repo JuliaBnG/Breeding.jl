@@ -77,6 +77,40 @@ p0, μ, d_blup = base_allele_frequencies(M_genotyped, ainv(ped), genotyped_indic
 
 ---
 
+## Exact $\mathbf{Z'Z}$ Accumulation & Bit-Parallel Haplotypes
+
+For large-scale SNP-BLUP evaluations, forming and updating the marker
+crossproduct $\mathbf{Z'Z}$ directly from streaming batches of
+genotyped individuals avoids keeping the full genotype matrix in
+memory.
+
+[`zpz!`](@ref) updates an $m \times m$ coefficient block from an
+$n \times m$ dosage matrix $\mathbf{Z}$ (e.g. `Int8` or centred
+floats). For BLAS element types, it computes the lower triangle via
+blocked `syrk` and mirrors it across threads:
+
+```julia
+# Accumulate batches of dosages into ZZ without re-allocating:
+ZZ = zeros(m, m)
+zpz!(ZZ, Z_batch1)
+zpz!(ZZ, Z_batch2; accumulate = true)
+```
+
+When phased 0/1 haplotypes are available (e.g. directly from
+[`gene_drop`](@ref)), [`zpz_hap!`](@ref) computes the exact integer
+dosages $\mathbf{Z'Z}$ directly from bit-packed haplotype vectors
+without unpacking or forming $\mathbf{Z}$. Each 64-bit word processes
+64 individuals in parallel using bitwise AND and hardware population
+count instructions (`count_ones`):
+
+```julia
+# Bit counting on phased haplotypes:
+ZZ = zeros(Int, m, m)
+zpz_hap!(ZZ, haplotypes; loci = :rows)
+```
+
+---
+
 ## Pseudo-SNPs from Phased Haplotypes
 
 When genomic models utilize haplotype alleles across sliding or linkage-disequilibrium blocks

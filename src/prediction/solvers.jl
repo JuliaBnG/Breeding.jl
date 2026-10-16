@@ -33,8 +33,16 @@ changes divided by sum of squared current solutions) is below `tol`. With
 `history = true` the solutions of every round (columns, starting with
 `x0`) are returned as a fourth value.
 """
-function jacobi(A::AbstractMatrix, b::AbstractVector; x0 = zeros(length(b)), ω = 1.0,
-                second_order = false, tol = 1e-9, maxiter = 10_000, history = false)
+function jacobi(
+    A::AbstractMatrix,
+    b::AbstractVector;
+    x0 = zeros(length(b)),
+    ω = 1.0,
+    second_order = false,
+    tol = 1e-9,
+    maxiter = 10_000,
+    history = false,
+)
     n = length(b)
     x = Vector{Float64}(x0)
     xold = similar(x)
@@ -49,11 +57,12 @@ function jacobi(A::AbstractMatrix, b::AbstractVector; x0 = zeros(length(b)), ω 
         it += 1
         copyto!(xold, x)
         mul!(r, A, x)
-        @inbounds for i in 1:n
+        @inbounds for i = 1:n
             step = (b[i] - r[i]) / d[i]
             w = ω isa Number ? ω : ω[i]
-            x[i] = second_order ? xold[i] + step + w * (xold[i] - xprev[i]) :
-                   xold[i] + w * step
+            x[i] =
+                second_order ? xold[i] + step + w * (xold[i] - xprev[i]) :
+                xold[i] + w * step
         end
         copyto!(xprev, xold)
         history && push!(hist, copy(x))
@@ -72,8 +81,15 @@ symmetric sparse system. Because ``\\mathbf{A}`` is symmetric, row `i`
 is read from column `i` of the CSC storage, so one sweep costs one pass
 over the non-zeros. Arguments as in [`jacobi`](@ref).
 """
-function gauss_seidel(A::SparseMatrixCSC, b::AbstractVector; x0 = zeros(length(b)),
-                      ω = 1.0, tol = 1e-9, maxiter = 10_000, history = false)
+function gauss_seidel(
+    A::SparseMatrixCSC,
+    b::AbstractVector;
+    x0 = zeros(length(b)),
+    ω = 1.0,
+    tol = 1e-9,
+    maxiter = 10_000,
+    history = false,
+)
     n = length(b)
     x = Vector{Float64}(x0)
     xold = similar(x)
@@ -84,10 +100,10 @@ function gauss_seidel(A::SparseMatrixCSC, b::AbstractVector; x0 = zeros(length(b
     while it < maxiter
         it += 1
         copyto!(xold, x)
-        @inbounds for j in 1:n
+        @inbounds for j = 1:n
             s = b[j]
             dj = 0.0
-            for p in cp[j]:cp[j+1]-1
+            for p = cp[j]:(cp[j+1]-1)
                 i = rv[p]
                 if i == j
                     dj = nz[p]
@@ -105,11 +121,13 @@ function gauss_seidel(A::SparseMatrixCSC, b::AbstractVector; x0 = zeros(length(b
     history ? (x, it, conv, reduce(hcat, hist)) : (x, it, conv)
 end
 
-gauss_seidel(A::AbstractMatrix, b::AbstractVector; kw...) = gauss_seidel(sparse(A), b; kw...)
+gauss_seidel(A::AbstractMatrix, b::AbstractVector; kw...) =
+    gauss_seidel(sparse(A), b; kw...)
 
 """
-    pcg(A, b; M = diag(A), x0 = zeros, tol = 1e-12, maxiter = length(b) * 10,
-        criterion = :residual, uplo = :L, history = false) -> (x, iterations, conv[, hist])
+    pcg(A, b; M = diag(A), x0 = zeros(length(b)), tol = 1e-12,
+        maxiter = 10 * length(b), criterion = :residual, uplo = :L,
+        history = false) -> (x, iterations, conv[, hist])
 
 Preconditioned conjugate gradient for a symmetric positive (semi-)
 definite system (Lidauer et al., 1999; Mrode Section 19.6). `A` is a
@@ -120,14 +138,22 @@ preconditioner) must be given. Convergence is ``\\|b - Ax\\| / \\|b\\|``
 (`criterion = :residual`) or Mrode's change criterion
 (`criterion = :change`).
 
-A dense BLAS matrix is multiplied as `Symmetric(A, uplo)` (BLAS `symv`),
-which reads only one triangle and halves the memory traffic of a large
-SNP-BLUP system; only that triangle of `A` needs to be filled. Sparse
-matrices and operators are used as given.
+A dense BLAS matrix is multiplied as `Symmetric(A, uplo)` (BLAS
+`symv`), which reads only one triangle and halves the memory traffic
+of a large SNP-BLUP system; only that triangle of `A` needs to be
+filled. Sparse matrices and operators are used as given.
 """
-function pcg(A, b::AbstractVector; M = nothing, x0 = zeros(length(b)), tol = 1e-12,
-             maxiter = 10length(b), criterion::Symbol = :residual, uplo::Symbol = :L,
-             history = false)
+function pcg(
+    A,
+    b::AbstractVector;
+    M = nothing,
+    x0 = zeros(length(b)),
+    tol = 1e-12,
+    maxiter = 10length(b),
+    criterion::Symbol = :residual,
+    uplo = :L,
+    history = false,
+)
     n = length(b)
     Minv = 1 ./ Vector{Float64}(M === nothing ? diag(A) : M)
     A = _symop(A, uplo)
@@ -163,7 +189,7 @@ function pcg(A, b::AbstractVector; M = nothing, x0 = zeros(length(b)), tol = 1e-
     history ? (x, it, conv, reduce(hcat, hist)) : (x, it, conv)
 end
 
-_symop(A::StridedMatrix{<:LinearAlgebra.BlasFloat}, uplo) = Symmetric(A, uplo)
+_symop(A::StridedMatrix{<:LinearAlgebra.BlasFloat}, uplo) = Symmetric(A, Symbol(uplo))
 _symop(A, uplo) = A
 
 _amul!(v, A::AbstractMatrix, d) = mul!(v, A, d)

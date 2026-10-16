@@ -53,9 +53,18 @@ Section 19.6) usually converges in fewer rounds than stationary methods:
 ```julia
 # PCG on sparse matrix with diagonal preconditioner:
 x, iters, conv = pcg(A, b; M = diag(A), tol = 1e-12)
+
+# Warm start from previous round's solutions:
+x, iters, conv = pcg(A, b; x0 = x_prev)
 ```
 
-The operator `A` in [`pcg`](@ref) can be an explicit matrix or an in-place linear mapping function `A(v, d)` that evaluates $\mathbf{v} \leftarrow \mathbf{A}\mathbf{d}$.
+The operator `A` in [`pcg`](@ref) can be an explicit matrix or an
+in-place linear mapping function `A(v, d)` evaluating
+$\mathbf{v} \leftarrow \mathbf{A}\mathbf{d}$.
+
+For dense BLAS matrices, `pcg` evaluates products via `Symmetric(A,
+uplo)` (BLAS `symv`), reading only one triangle (`uplo = :L` by default)
+and halving memory bandwidth for large SNP-BLUP systems.
 
 ---
 

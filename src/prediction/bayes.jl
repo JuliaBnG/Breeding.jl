@@ -46,12 +46,24 @@ with ``p`` from `Z` (taken as uncentred dosages). Starting values:
 Columns of `Z` are processed in place; the work per iteration is
 ``O(nm)`` and allocation-free.
 """
-function bayes_snp(y::AbstractVector, X::AbstractMatrix, Z::AbstractMatrix;
-                   method::Symbol = :A, ν::Real = 4.012, S = nothing, σ²g = nothing,
-                   σ²e = nothing, π::Real = 0.3, g0::Real = 0.0, niter::Integer = 10_000,
-                   burnin::Integer = 3_000, nmh::Integer = 20,
-                   rng::AbstractRNG = Random.default_rng())
-    method in (:A, :B, :C, :Cpi) || throw(ArgumentError("method must be :A, :B, :C or :Cpi"))
+function bayes_snp(
+    y::AbstractVector,
+    X::AbstractMatrix,
+    Z::AbstractMatrix;
+    method::Symbol = :A,
+    ν::Real = 4.012,
+    S = nothing,
+    σ²g = nothing,
+    σ²e = nothing,
+    π::Real = 0.3,
+    g0::Real = 0.0,
+    niter::Integer = 10_000,
+    burnin::Integer = 3_000,
+    nmh::Integer = 20,
+    rng::AbstractRNG = Random.default_rng(),
+)
+    method in (:A, :B, :C, :Cpi) ||
+        throw(ArgumentError("method must be :A, :B, :C or :Cpi"))
     n, m = size(Z)
     nf = size(X, 2)
     Xd = Matrix{Float64}(X)
@@ -72,9 +84,9 @@ function bayes_snp(y::AbstractVector, X::AbstractMatrix, Z::AbstractMatrix;
     sve = sπ = 0.0
     ns = 0
     χe = Chisq(n - 2)
-    for it in 1:niter
+    for it = 1:niter
         ve = dot(e, e) / rand(rng, χe)                    # Eqn 11.21
-        for j in 1:nf                                      # Eqn 11.20
+        for j = 1:nf                                      # Eqn 11.20
             xj = view(Xd, :, j)
             rhs = dot(xj, e) + xx[j] * b[j]
             new = rhs / xx[j] + randn(rng) * sqrt(ve / xx[j])
@@ -82,7 +94,7 @@ function bayes_snp(y::AbstractVector, X::AbstractMatrix, Z::AbstractMatrix;
             b[j] = new
         end
         k = 0
-        for i in 1:m
+        for i = 1:m
             zi = view(Zd, :, i)
             r = dot(zi, e) + zz[i] * g[i]                  # z'y*
             fit = true
@@ -92,7 +104,7 @@ function bayes_snp(y::AbstractVector, X::AbstractMatrix, Z::AbstractMatrix;
                 v = vg[i]
                 ll(v) = (V = zz[i]^2 * v + zz[i] * ve; -0.5 * (log(V) + r^2 / V))
                 l1 = ll(v)
-                for _ in 1:nmh
+                for _ = 1:nmh
                     vnew = rand(rng) < 1 - πc ? Sg / rand(rng, Chisq(ν)) : 0.0
                     l2 = ll(vnew)
                     if rand(rng) < exp(l2 - l1)

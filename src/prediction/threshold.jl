@@ -43,19 +43,28 @@ columns constrained to zero. Starting thresholds default to the probit
 of the cumulative proportions; `b = u = 0`. Iteration stops when the
 largest increment is below `tol`.
 """
-function threshold_model(N::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix,
-                         Kinv::AbstractMatrix, λ::Real; t0 = nothing, zero = Int[],
-                         tol = 1e-9, maxiter = 100)
+function threshold_model(
+    N::AbstractMatrix,
+    X::AbstractMatrix,
+    Z::AbstractMatrix,
+    Kinv::AbstractMatrix,
+    λ::Real;
+    t0 = nothing,
+    zero = Int[],
+    tol = 1e-9,
+    maxiter = 100,
+)
     s, m = size(N)
     nt = m - 1
     nb, nu = size(X, 2), size(Z, 2)
     n = vec(sum(N; dims = 2))
     Xd, Zd = Matrix{Float64}(X), Matrix{Float64}(Z)
     K = Matrix{Float64}(Kinv)
-    t = t0 === nothing ?
-        [quantile(Normal(), sum(N[:, 1:k]) / sum(N)) for k in 1:nt] : Vector{Float64}(t0)
+    t =
+        t0 === nothing ? [quantile(Normal(), sum(N[:, 1:k]) / sum(N)) for k = 1:nt] :
+        Vector{Float64}(t0)
     b, u = zeros(nb), zeros(nu)
-    keep = setdiff(1:nt+nb+nu, nt .+ zero)
+    keep = setdiff(1:(nt+nb+nu), nt .+ zero)
     hist = Vector{Float64}[]
     ϕ = zeros(s, m + 1)              # ϕ[j, k+1] = φ(t_k − a_j), ϕ at t₀ = t_m = 0
     P = zeros(s, m)
@@ -64,9 +73,9 @@ function threshold_model(N::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix
     while it < maxiter
         it += 1
         a = Xd * b + Zd * u
-        for j in 1:s
+        for j = 1:s
             Fprev = 0.0
-            for k in 1:nt
+            for k = 1:nt
                 d = t[k] - a[j]
                 ϕ[j, k+1] = _ϕ(d)
                 F = _Φ(d)
@@ -75,27 +84,38 @@ function threshold_model(N::AbstractMatrix, X::AbstractMatrix, Z::AbstractMatrix
             end
             P[j, m] = 1 - Fprev
         end
-        v = [sum(N[j, k] * (ϕ[j, k] - ϕ[j, k+1]) / P[j, k] for k in 1:m) for j in 1:s]
-        w = [n[j] * sum((ϕ[j, k] - ϕ[j, k+1])^2 / P[j, k] for k in 1:m) for j in 1:s]
-        L = [-n[j] * ϕ[j, k+1] * ((ϕ[j, k+1] - ϕ[j, k]) / P[j, k] -
-                                  (ϕ[j, k+2] - ϕ[j, k+1]) / P[j, k+1]) for j in 1:s, k in 1:nt]
+        v = [sum(N[j, k] * (ϕ[j, k] - ϕ[j, k+1]) / P[j, k] for k = 1:m) for j = 1:s]
+        w = [n[j] * sum((ϕ[j, k] - ϕ[j, k+1])^2 / P[j, k] for k = 1:m) for j = 1:s]
+        L = [
+            -n[j] *
+            ϕ[j, k+1] *
+            ((ϕ[j, k+1] - ϕ[j, k]) / P[j, k] - (ϕ[j, k+2] - ϕ[j, k+1]) / P[j, k+1]) for
+            j = 1:s, k = 1:nt
+        ]
         Q = zeros(nt, nt)
-        for k in 1:nt
-            Q[k, k] = sum(n[j] * ϕ[j, k+1]^2 * (P[j, k] + P[j, k+1]) / (P[j, k] * P[j, k+1])
-                          for j in 1:s)
-            k < nt && (Q[k+1, k] = Q[k, k+1] =
-                           -sum(n[j] * ϕ[j, k+2] * ϕ[j, k+1] / P[j, k+1] for j in 1:s))
+        for k = 1:nt
+            Q[k, k] = sum(
+                n[j] * ϕ[j, k+1]^2 * (P[j, k] + P[j, k+1]) / (P[j, k] * P[j, k+1]) for
+                j = 1:s
+            )
+            k < nt && (
+                Q[k+1, k] =
+                    Q[k, k+1] =
+                        -sum(n[j] * ϕ[j, k+2] * ϕ[j, k+1] / P[j, k+1] for j = 1:s)
+            )
         end
-        p = [sum((N[j, k] / P[j, k] - N[j, k+1] / P[j, k+1]) * ϕ[j, k+1] for j in 1:s)
-             for k in 1:nt]
+        p = [
+            sum((N[j, k] / P[j, k] - N[j, k+1] / P[j, k+1]) * ϕ[j, k+1] for j = 1:s) for
+            k = 1:nt
+        ]
         WX, WZ = w .* Xd, w .* Zd
         lhs = [Q L'Xd L'Zd; Xd'L Xd'WX Xd'WZ; Zd'L Zd'WX Zd'WZ+λ*K]
         rhs = [p; Xd'v; Zd'v - λ * (K * u)]
         Δ = zeros(length(rhs))
         Δ[keep] = Symmetric(lhs[keep, keep]) \ rhs[keep]
         t .+= Δ[1:nt]
-        b .+= Δ[nt+1:nt+nb]
-        u .+= Δ[nt+nb+1:end]
+        b .+= Δ[(nt+1):(nt+nb)]
+        u .+= Δ[(nt+nb+1):end]
         push!(hist, [t; b; u])
         maximum(abs, Δ) < tol && break
     end
@@ -155,12 +175,23 @@ Iteration 0 uses ``W = I`` and ``q = d`` (a linear start), then Eqn 15.17
 is iterated with ``q`` and ``W`` of Eqns 15.18–15.19. `zero1`/`zero2`
 constrain fixed-effect columns of the two traits.
 """
-function joint_binary_quantitative(y1::AbstractVector, d::AbstractVector,
-                                   X1::AbstractMatrix, Z1::AbstractMatrix,
-                                   X2::AbstractMatrix, Z2::AbstractMatrix,
-                                   Kinv::AbstractMatrix, G::AbstractMatrix, σ²e1::Real,
-                                   r12::Real; ycentre = mean(y1), zero1 = Int[],
-                                   zero2 = Int[], tol = 1e-8, maxiter = 50)
+function joint_binary_quantitative(
+    y1::AbstractVector,
+    d::AbstractVector,
+    X1::AbstractMatrix,
+    Z1::AbstractMatrix,
+    X2::AbstractMatrix,
+    Z2::AbstractMatrix,
+    Kinv::AbstractMatrix,
+    G::AbstractMatrix,
+    σ²e1::Real,
+    r12::Real;
+    ycentre = mean(y1),
+    zero1 = Int[],
+    zero2 = Int[],
+    tol = 1e-8,
+    maxiter = 50,
+)
     n = length(y1)
     p1, q1, p2, q2 = size(X1, 2), size(Z1, 2), size(X2, 2), size(Z2, 2)
     β = r12 / sqrt(σ²e1) / sqrt(1 - r12^2)
@@ -172,7 +203,7 @@ function joint_binary_quantitative(y1::AbstractVector, d::AbstractVector,
     ys = y1 .- ycentre
     τ, ν = zeros(p2), zeros(q2)
     o2 = p1 + q1                       # offset of the liability equations
-    keep = setdiff(1:o2+p2+q2, [zero1; o2 .+ zero2])
+    keep = setdiff(1:(o2+p2+q2), [zero1; o2 .+ zero2])
     hist = Vector{Float64}[]
     b1, u1 = zeros(p1), zeros(q1)
     it = -1
@@ -183,7 +214,7 @@ function joint_binary_quantitative(y1::AbstractVector, d::AbstractVector,
         else
             μ = X2d * τ + Z2d * ν + β * ys
             q, w = zeros(n), zeros(n)
-            for j in 1:n
+            for j = 1:n
                 ϕ, F = _ϕ(μ[j]), _Φ(μ[j])
                 d1, d2 = -ϕ / F, ϕ / (1 - F)
                 q[j] = -(d[j] * d1 + (1 - d[j]) * d2)
@@ -191,16 +222,22 @@ function joint_binary_quantitative(y1::AbstractVector, d::AbstractVector,
             end
         end
         WX, WZ = w .* X2d, w .* Z2d
-        lhs = [ri*X1d'X1d ri*X1d'Z1d zeros(p1, p2) zeros(p1, q2)
-               ri*Z1d'X1d ri*Z1d'Z1d+Gci[1, 1]*K zeros(q1, p2) Gci[1, 2]*K
-               zeros(p2, p1) zeros(p2, q1) X2d'WX X2d'WZ
-               zeros(q2, p1) Gci[2, 1]*K Z2d'WX Z2d'WZ+Gci[2, 2]*K]
-        rhs = [ri * X1d'y1; ri * Z1d'y1 - Gci[1, 2] * (K * ν); X2d'q;
-               Z2d'q - Gci[2, 2] * (K * ν)]
+        lhs = [
+            ri*X1d'X1d ri*X1d'Z1d zeros(p1, p2) zeros(p1, q2)
+            ri*Z1d'X1d ri*Z1d'Z1d+Gci[1, 1]*K zeros(q1, p2) Gci[1, 2]*K
+            zeros(p2, p1) zeros(p2, q1) X2d'WX X2d'WZ
+            zeros(q2, p1) Gci[2, 1]*K Z2d'WX Z2d'WZ+Gci[2, 2]*K
+        ]
+        rhs = [
+            ri * X1d'y1;
+            ri * Z1d'y1 - Gci[1, 2] * (K * ν);
+            X2d'q;
+            Z2d'q - Gci[2, 2] * (K * ν)
+        ]
         x = zeros(length(rhs))
         x[keep] = Symmetric(lhs[keep, keep]) \ rhs[keep]
-        b1, u1 = x[1:p1], x[p1+1:o2]
-        Δτ, Δν = x[o2+1:o2+p2], x[o2+p2+1:end]
+        b1, u1 = x[1:p1], x[(p1+1):o2]
+        Δτ, Δν = x[(o2+1):(o2+p2)], x[(o2+p2+1):end]
         τ .+= Δτ
         ν .+= Δν
         push!(hist, [b1; u1; τ; ν])

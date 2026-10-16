@@ -18,8 +18,14 @@ having ``K^{-1} = A_p^{-1}`` and variance `σ²a`), the sorted `parents`
 (original indices; their sub-pedigree is closed, so `ainv` on it gives
 ``A_p^{-1}``), and the vector `m` of all animals.
 """
-function ram_design(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:Integer},
-                    animal::AbstractVector{<:Integer}, σ²a::Real, σ²e::Real; F = nothing)
+function ram_design(
+    sire::AbstractVector{<:Integer},
+    dam::AbstractVector{<:Integer},
+    animal::AbstractVector{<:Integer},
+    σ²a::Real,
+    σ²e::Real;
+    F = nothing,
+)
     N = length(sire)
     isparent = falses(N)
     for p in Iterators.flatten((sire, dam))
@@ -33,7 +39,9 @@ function ram_design(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:Integ
     rinv = Vector{Float64}(undef, length(animal))
     for (k, i) in enumerate(animal)
         if isparent[i]
-            push!(I, k); push!(J, col[i]); push!(V, 1.0)
+            push!(I, k)
+            push!(J, col[i])
+            push!(V, 1.0)
             rinv[k] = 1 / σ²e
         else
             for p in (sire[i], dam[i])
@@ -57,10 +65,17 @@ x'\\hat b - \\mathrm{PA}_i)}`` with ``k = n / (n + \\sigma^2_e/(m_i
 already adjusted for the fixed effects. Animals with neither records
 nor progeny get their parent average.
 """
-function ram_backsolve(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:Integer},
-                       animal::AbstractVector{<:Integer}, yadj::AbstractVector,
-                       ap::AbstractVector, parents::AbstractVector{<:Integer},
-                       σ²a::Real, σ²e::Real; F = nothing)
+function ram_backsolve(
+    sire::AbstractVector{<:Integer},
+    dam::AbstractVector{<:Integer},
+    animal::AbstractVector{<:Integer},
+    yadj::AbstractVector,
+    ap::AbstractVector,
+    parents::AbstractVector{<:Integer},
+    σ²a::Real,
+    σ²e::Real;
+    F = nothing,
+)
     N = length(sire)
     a = fill(NaN, N)
     a[parents] = ap
@@ -71,7 +86,7 @@ function ram_backsolve(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:In
         s[i] += yadj[k]
         n[i] += 1
     end
-    for i in 1:N            # parents precede offspring
+    for i = 1:N            # parents precede offspring
         isnan(a[i]) || continue
         pa = 0.5 * ((sire[i] > 0 ? a[sire[i]] : 0.0) + (dam[i] > 0 ? a[dam[i]] : 0.0))
         k = n[i] / (n[i] + σ²e / (m[i] * σ²a))
@@ -90,14 +105,21 @@ Mendelian factors, the inverse relationship matrix of the parents
 ``A_p^{-1}`` = `RelationshipMatrices.ainv` of their (closed)
 sub-pedigree, renumbered in the order of `parents`.
 """
-function ram_design(ped::DataFrame, animal::AbstractVector{<:Integer}, σ²a::Real, σ²e::Real;
-                    inbreeding::Bool = true)
+function ram_design(
+    ped::DataFrame,
+    animal::AbstractVector{<:Integer},
+    σ²a::Real,
+    σ²e::Real;
+    inbreeding::Bool = true,
+)
     F = inbreeding ? nrm_diag(ped) .- 1 : nothing
     W, rinv, parents, _ = ram_design(ped.sire, ped.dam, animal, σ²a, σ²e; F = F)
     pos = zeros(Int, nrow(ped))
     pos[parents] = eachindex(parents)
-    sub = DataFrame(sire = [s > 0 ? pos[s] : 0 for s in ped.sire[parents]],
-                    dam = [d > 0 ? pos[d] : 0 for d in ped.dam[parents]])
+    sub = DataFrame(
+        sire = [s > 0 ? pos[s] : 0 for s in ped.sire[parents]],
+        dam = [d > 0 ? pos[d] : 0 for d in ped.dam[parents]],
+    )
     W, rinv, parents, ainv(sub)
 end
 
@@ -106,8 +128,23 @@ end
 
 [`ram_backsolve`](@ref) with inbreeding from `RelationshipMatrices.nrm_diag`.
 """
-ram_backsolve(ped::DataFrame, animal::AbstractVector{<:Integer}, yadj::AbstractVector,
-              ap::AbstractVector, parents::AbstractVector{<:Integer}, σ²a::Real, σ²e::Real;
-              inbreeding::Bool = true) =
-    ram_backsolve(ped.sire, ped.dam, animal, yadj, ap, parents, σ²a, σ²e;
-                  F = inbreeding ? nrm_diag(ped) .- 1 : nothing)
+ram_backsolve(
+    ped::DataFrame,
+    animal::AbstractVector{<:Integer},
+    yadj::AbstractVector,
+    ap::AbstractVector,
+    parents::AbstractVector{<:Integer},
+    σ²a::Real,
+    σ²e::Real;
+    inbreeding::Bool = true,
+) = ram_backsolve(
+    ped.sire,
+    ped.dam,
+    animal,
+    yadj,
+    ap,
+    parents,
+    σ²a,
+    σ²e;
+    F = inbreeding ? nrm_diag(ped) .- 1 : nothing,
+)

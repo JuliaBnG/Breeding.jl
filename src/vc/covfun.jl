@@ -24,8 +24,14 @@ matrix `T` of the covariance function in powers of standardized age
 else `nothing`), and Kirkpatrick's goodness-of-fit statistic `χ²` with
 `df` degrees of freedom (`χ² = 0` for a full fit).
 """
-function covariance_function(G::AbstractMatrix, t::AbstractVector; k::Integer = size(G, 1),
-                             V = nothing, tmin = minimum(t), tmax = maximum(t))
+function covariance_function(
+    G::AbstractMatrix,
+    t::AbstractVector;
+    k::Integer = size(G, 1),
+    V = nothing,
+    tmin = minimum(t),
+    tmax = maximum(t),
+)
     n = length(t)
     size(G) == (n, n) || throw(DimensionMismatch("G must be $n × $n"))
     1 ≤ k ≤ n || throw(ArgumentError("order k must be in 1:$n"))
@@ -34,16 +40,25 @@ function covariance_function(G::AbstractMatrix, t::AbstractVector; k::Integer = 
         C = Φ \ G / Φ'
         Λ = _legendre_coefficients(k)
         x = @. -1 + 2 * (t - tmin) / (tmax - tmin)
-        M = [xi^j for xi in x, j in 0:k-1]
+        M = [xi^j for xi in x, j = 0:(k-1)]
         T = Λ * C * Λ'
-        return (C = Symmetric(C) |> Matrix, Φ = Φ, Ĝ = Φ * C * Φ', T = T, M = M, χ² = 0.0,
-                df = 0)
+        return (
+            C = Symmetric(C) |> Matrix,
+            Φ = Φ,
+            Ĝ = Φ * C * Φ',
+            T = T,
+            M = M,
+            χ² = 0.0,
+            df = 0,
+        )
     end
-    lo = [(i, j) for j in 1:n for i in j:n]            # lower triangle, column-major
-    pr = [(i, j) for j in 1:k for i in j:k]            # distinct coefficients
+    lo = [(i, j) for j = 1:n for i = j:n]            # lower triangle, column-major
+    pr = [(i, j) for j = 1:k for i = j:k]            # distinct coefficients
     g = [G[i, j] for (i, j) in lo]
-    Xs = [p == q ? Φ[i, p] * Φ[j, q] : Φ[i, p] * Φ[j, q] + Φ[i, q] * Φ[j, p]
-          for (i, j) in lo, (p, q) in pr]
+    Xs = [
+        p == q ? Φ[i, p] * Φ[j, q] : Φ[i, p] * Φ[j, q] + Φ[i, q] * Φ[j, p] for
+        (i, j) in lo, (p, q) in pr
+    ]
     W = V === nothing ? I : inv(Symmetric(Matrix{Float64}(V)))
     c = (Xs' * W * Xs) \ (Xs' * W * g)
     C = zeros(k, k)
@@ -51,8 +66,15 @@ function covariance_function(G::AbstractMatrix, t::AbstractVector; k::Integer = 
         C[p, q] = C[q, p] = v
     end
     r = g - Xs * c
-    (C = C, Φ = Φ, Ĝ = Φ * C * Φ', T = nothing, M = nothing,
-     χ² = V === nothing ? NaN : r' * W * r, df = length(lo) - length(pr))
+    (
+        C = C,
+        Φ = Φ,
+        Ĝ = Φ * C * Φ',
+        T = nothing,
+        M = nothing,
+        χ² = V === nothing ? NaN : r' * W * r,
+        df = length(lo) - length(pr),
+    )
 end
 
 """
@@ -67,11 +89,11 @@ function _legendre_coefficients(k::Integer)
     P = zeros(k, k)
     P[1, 1] = 1
     k > 1 && (P[2, 2] = 1)
-    for j in 2:k-1                       # (j)P_j = (2j-1) x P_{j-1} - (j-1) P_{j-2}
-        P[j+1, 2:end] .+= (2j - 1) / j .* P[j, 1:end-1]
+    for j = 2:(k-1)                       # (j)P_j = (2j-1) x P_{j-1} - (j-1) P_{j-2}
+        P[j+1, 2:end] .+= (2j - 1) / j .* P[j, 1:(end-1)]
         P[j+1, :] .-= (j - 1) / j .* P[j-1, :]
     end
-    for j in 1:k
+    for j = 1:k
         P[j, :] .*= sqrt((2(j - 1) + 1) / 2)
     end
     P'

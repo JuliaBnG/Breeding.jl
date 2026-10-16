@@ -7,12 +7,15 @@ Inverse of the Mendelian-sampling variance factor of each animal,
 inbreeding. `sire`/`dam` codes outside `1:N` (e.g. `0` or group codes)
 count as unknown. `F` are the inbreeding coefficients of animals `1:N`.
 """
-function mendelian_precision(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:Integer};
-                             F = nothing)
+function mendelian_precision(
+    sire::AbstractVector{<:Integer},
+    dam::AbstractVector{<:Integer};
+    F = nothing,
+)
     N = length(sire)
     Fv = F === nothing ? zeros(N) : F
     b = Vector{Float64}(undef, N)
-    for i in 1:N
+    for i = 1:N
         v = 1.0
         1 ≤ sire[i] ≤ N && (v -= 0.25 * (1 + Fv[sire[i]]))
         1 ≤ dam[i] ≤ N && (v -= 0.25 * (1 + Fv[dam[i]]))
@@ -55,19 +58,25 @@ deviations (VanRaden and Wiggans, 1991; Mrode Eqns 4.8–4.13):
 A named tuple of vectors `PA, YD, PC, n1, n2, n3, DYD, w1, w2, w3`.
 `PC` and `DYD` are `NaN` for animals without progeny.
 """
-function ebv_partition(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:Integer}, α::Real,
-                       nrec::AbstractVector, yd::AbstractVector, a::AbstractVector;
-                       F = nothing)
+function ebv_partition(
+    sire::AbstractVector{<:Integer},
+    dam::AbstractVector{<:Integer},
+    α::Real,
+    nrec::AbstractVector,
+    yd::AbstractVector,
+    a::AbstractVector;
+    F = nothing,
+)
     N = length(sire)
     b = mendelian_precision(sire, dam; F = F)
     par(p) = 1 ≤ p ≤ N ? a[p] : 0.0
-    PA = [(par(sire[i]) + par(dam[i])) / 2 for i in 1:N]
+    PA = [(par(sire[i]) + par(dam[i])) / 2 for i = 1:N]
     # progeny sums
     sp = zeros(N)    # Σ u_prog α / 2  (numerator of n3)
     spc = zeros(N)   # Σ u_prog α / 2 ⋅ (2â_o - â_mate)
     sd = zeros(N)    # Σ u_prog n2prog
     sdd = zeros(N)   # Σ u_prog n2prog (2YD_o - â_mate)
-    for o in 1:N, (p, m) in ((sire[o], dam[o]), (dam[o], sire[o]))
+    for o = 1:N, (p, m) in ((sire[o], dam[o]), (dam[o], sire[o]))
         1 ≤ p ≤ N || continue
         u = b[o] / 2                    # u_prog: 1 or 2/3
         n2o = nrec[o] / (nrec[o] + α * b[o])
@@ -79,12 +88,22 @@ function ebv_partition(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:In
     num1 = α .* b
     num2 = Float64.(nrec)
     den = num1 .+ num2 .+ sp
-    PC = [sp[i] > 0 ? spc[i] / sp[i] : NaN for i in 1:N]
-    DYD = [sd[i] > 0 ? sdd[i] / sd[i] : NaN for i in 1:N]
+    PC = [sp[i] > 0 ? spc[i] / sp[i] : NaN for i = 1:N]
+    DYD = [sd[i] > 0 ? sdd[i] / sd[i] : NaN for i = 1:N]
     num3w = 0.5α .* sd
     denw = num1 .+ num2 .+ num3w
-    (PA = PA, YD = Vector{Float64}(yd), PC = PC, n1 = num1 ./ den, n2 = num2 ./ den,
-     n3 = sp ./ den, DYD = DYD, w1 = num1 ./ denw, w2 = num2 ./ denw, w3 = num3w ./ denw)
+    (
+        PA = PA,
+        YD = Vector{Float64}(yd),
+        PC = PC,
+        n1 = num1 ./ den,
+        n2 = num2 ./ den,
+        n3 = sp ./ den,
+        DYD = DYD,
+        w1 = num1 ./ denw,
+        w2 = num2 ./ denw,
+        w3 = num3w ./ denw,
+    )
 end
 
 """
@@ -113,19 +132,25 @@ with `t × t` weight matrices summing to `I`.
 Vectors (over animals) of `PA, PC, DYD` (`t`-vectors) and of the weight
 matrices `W1, W2, W3, M1, M2, M3`.
 """
-function ebv_partition_mt(sire::AbstractVector{<:Integer}, dam::AbstractVector{<:Integer},
-                          G0::AbstractMatrix, ZRZ::AbstractVector{<:AbstractMatrix},
-                          yd::AbstractMatrix, a::AbstractMatrix; F = nothing)
+function ebv_partition_mt(
+    sire::AbstractVector{<:Integer},
+    dam::AbstractVector{<:Integer},
+    G0::AbstractMatrix,
+    ZRZ::AbstractVector{<:AbstractMatrix},
+    yd::AbstractMatrix,
+    a::AbstractMatrix;
+    F = nothing,
+)
     N, t = size(a)
     Gi = inv(Symmetric(Matrix{Float64}(G0)))
     b = mendelian_precision(sire, dam; F = F)
     row(i) = 1 ≤ i ≤ N ? a[i, :] : zeros(t)
-    PA = [(row(sire[i]) + row(dam[i])) / 2 for i in 1:N]
+    PA = [(row(sire[i]) + row(dam[i])) / 2 for i = 1:N]
     sp = zeros(N)                                  # Σ α_prog
-    spc = [zeros(t) for _ in 1:N]                  # Σ α_prog (2â_o − â_mate)
-    sW = [zeros(t, t) for _ in 1:N]                # Σ W2prog α_prog
-    sWd = [zeros(t) for _ in 1:N]                  # Σ W2prog α_prog (2YD_o − â_mate)
-    for o in 1:N, (p, m) in ((sire[o], dam[o]), (dam[o], sire[o]))
+    spc = [zeros(t) for _ = 1:N]                  # Σ α_prog (2â_o − â_mate)
+    sW = [zeros(t, t) for _ = 1:N]                # Σ W2prog α_prog
+    sWd = [zeros(t) for _ = 1:N]                  # Σ W2prog α_prog (2YD_o − â_mate)
+    for o = 1:N, (p, m) in ((sire[o], dam[o]), (dam[o], sire[o]))
         1 ≤ p ≤ N || continue
         u = b[o] / 2
         W2o = (ZRZ[o] + b[o] * Gi) \ ZRZ[o]
@@ -134,10 +159,10 @@ function ebv_partition_mt(sire::AbstractVector{<:Integer}, dam::AbstractVector{<
         sW[p] .+= u .* W2o
         sWd[p] .+= u .* (W2o * (2yd[o, :] .- row(m)))
     end
-    W1, W2, W3, M1, M2, M3 = (Vector{Matrix{Float64}}(undef, N) for _ in 1:6)
+    W1, W2, W3, M1, M2, M3 = (Vector{Matrix{Float64}}(undef, N) for _ = 1:6)
     PC = Vector{Vector{Float64}}(undef, N)
     DYD = Vector{Vector{Float64}}(undef, N)
-    for i in 1:N
+    for i = 1:N
         D = ZRZ[i] + (b[i] + sp[i] / 2) * Gi
         W1[i] = D \ (b[i] * Gi)
         W2[i] = D \ ZRZ[i]

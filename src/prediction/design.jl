@@ -55,22 +55,27 @@ the matrix ``\\Phi`` of Mrode's Appendix G.
 
 Returns a `length(t) × k` matrix.
 """
-function legendre(t::AbstractVector, k::Integer; tmin = minimum(t), tmax = maximum(t),
-                  normalized = true)
+function legendre(
+    t::AbstractVector,
+    k::Integer;
+    tmin = minimum(t),
+    tmax = maximum(t),
+    normalized = true,
+)
     n = length(t)
     Φ = Matrix{Float64}(undef, n, k)
-    @inbounds for i in 1:n
+    @inbounds for i = 1:n
         x = -1 + 2 * (t[i] - tmin) / (tmax - tmin)
         p₀, p₁ = 1.0, x
         Φ[i, 1] = p₀
         k > 1 && (Φ[i, 2] = p₁)
-        for j in 2:k-1 # Bonnet's recursion, P_j of order j
+        for j = 2:(k-1) # Bonnet's recursion, P_j of order j
             p₀, p₁ = p₁, ((2j - 1) * x * p₁ - (j - 1) * p₀) / j
             Φ[i, j+1] = p₁
         end
     end
     if normalized
-        for j in 1:k
+        for j = 1:k
             Φ[:, j] .*= sqrt((2(j - 1) + 1) / 2)
         end
     end
@@ -97,7 +102,7 @@ function mt_blocks(obs::AbstractMatrix{Bool}, Ms::AbstractVector{<:AbstractMatri
     nobs = count(obs)
     blocks = Vector{SparseMatrixCSC{Float64,Int}}(undef, t)
     offset = 0
-    for j in 1:t
+    for j = 1:t
         size(Ms[j], 1) == n || throw(DimensionMismatch("trait $j design has wrong rows"))
         rows = findall(view(obs, :, j))
         M = sparse(Ms[j][rows, :])
@@ -135,12 +140,12 @@ function mt_rinv(R0::AbstractMatrix, obs::AbstractMatrix{Bool})
     size(R0) == (t, t) || throw(DimensionMismatch("R0 must be $t × $t"))
     pos = zeros(Int, n, t) # position of (i, j) in the stacked vector
     k = 0
-    for j in 1:t, i in 1:n
+    for j = 1:t, i = 1:n
         obs[i, j] && (pos[i, j] = (k += 1))
     end
     cache = Dict{BitVector,Matrix{Float64}}()
     I, J, V = Int[], Int[], Float64[]
-    for i in 1:n
+    for i = 1:n
         S = BitVector(view(obs, i, :))
         any(S) || continue
         Ri = get!(() -> inv(Symmetric(Matrix{Float64}(R0[S, S]))), cache, S)
@@ -163,8 +168,12 @@ effects (Muir, 2005; Bijma et al., 2007): record `i`, made by
 effect of every other member of its group, with weight `w` (e.g. a
 dilution factor ``1/(n-1)``). `n` is the number of animal equations.
 """
-function associate_incidence(group::AbstractVector, animal::AbstractVector{<:Integer},
-                             n::Integer; w = 1.0)
+function associate_incidence(
+    group::AbstractVector,
+    animal::AbstractVector{<:Integer},
+    n::Integer;
+    w = 1.0,
+)
     members = Dict{eltype(group),Vector{Int}}()
     for (g, a) in zip(group, animal)
         push!(get!(members, g, Int[]), a)

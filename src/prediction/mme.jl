@@ -39,8 +39,12 @@ _kinv(Kinv::UniformScaling, q) = sparse(Float64(Kinv.λ) * I, q, q)
 _kinv(Kinv::SparseMatrixCSC, q) = SparseMatrixCSC{Float64,Int}(Kinv)
 _kinv(Kinv::AbstractMatrix, q) = Matrix{Float64}(Kinv)
 
-function RandomEffect(Zs::AbstractVector{<:AbstractMatrix}, Kinv, G0::AbstractMatrix;
-                      name = "")
+function RandomEffect(
+    Zs::AbstractVector{<:AbstractMatrix},
+    Kinv,
+    G0::AbstractMatrix;
+    name = "",
+)
     m = length(Zs)
     size(G0) == (m, m) || throw(DimensionMismatch("G0 must be $m × $m"))
     q = size(Zs[1], 2)
@@ -100,8 +104,13 @@ Set up Henderson's mixed-model equations for
 `X` may have zero columns; `effects` is a vector of
 [`RandomEffect`](@ref)s (possibly empty). All products are sparse.
 """
-function mme(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:RandomEffect} = RandomEffect[];
-             σ²e = nothing, Rinv = nothing)
+function mme(
+    y::AbstractVector,
+    X::AbstractMatrix,
+    effects::AbstractVector{<:RandomEffect} = RandomEffect[];
+    σ²e = nothing,
+    Rinv = nothing,
+)
     (σ²e === nothing) == (Rinv === nothing) &&
         throw(ArgumentError("give exactly one of σ²e or Rinv"))
     n = length(y)
@@ -126,7 +135,7 @@ function mme(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:Ran
     pen = SparseMatrixCSC{Float64,Int}[spzeros(size(X, 2), size(X, 2))]
     for r in effects
         start = last(blocks[end]) + 1
-        push!(blocks, start:start+size(r.Z, 2)-1)
+        push!(blocks, start:(start+size(r.Z, 2)-1))
         Gi = inv(Symmetric(r.G0)) .* scale
         push!(pen, kron(sparse(Gi), r.Kinv isa SparseMatrixCSC ? r.Kinv : sparse(r.Kinv)))
     end
@@ -166,8 +175,14 @@ from it. The direct methods ignore it.
 """
 solve_mme(m::MME; kw...) = solve_mme(m.lhs, m.rhs; kw...)
 
-function solve_mme(lhs::AbstractMatrix, rhs::AbstractVector; zero = Int[],
-                   method::Symbol = :direct, x0 = nothing, kw...)
+function solve_mme(
+    lhs::AbstractMatrix,
+    rhs::AbstractVector;
+    zero = Int[],
+    method::Symbol = :direct,
+    x0 = nothing,
+    kw...,
+)
     n = length(rhs)
     keep = _keep(n, zero)
     A = lhs[keep, keep]
@@ -278,7 +293,9 @@ Split a solution vector into fixed effects and, per random effect, a
 """
 function solutions(m::MME, x::AbstractVector)
     fixed = x[m.blocks[1]]
-    random = [reshape(x[m.blocks[k+1]], nlevels(r), ncomponents(r))
-              for (k, r) in enumerate(m.effects)]
+    random = [
+        reshape(x[m.blocks[k+1]], nlevels(r), ncomponents(r)) for
+        (k, r) in enumerate(m.effects)
+    ]
     (fixed = fixed, random = random)
 end

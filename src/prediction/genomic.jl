@@ -40,8 +40,13 @@ for all animals in `G`, where ``R = \\operatorname{diag}(1/w)`` for
 weights `w` (e.g. EDC; `I` if omitted). Theoretical reliabilities are
 ``b_{ii}/g_{ii}``.
 """
-function gblup_index(G::AbstractMatrix, ref::AbstractVector{<:Integer}, yc::AbstractVector,
-                     λ::Real; w = nothing)
+function gblup_index(
+    G::AbstractMatrix,
+    ref::AbstractVector{<:Integer},
+    yc::AbstractVector,
+    λ::Real;
+    w = nothing,
+)
     V = Symmetric(G[ref, ref] + λ * (w === nothing ? I : Diagonal(1 ./ w)))
     F = cholesky(V)
     Gr = G[:, ref]
@@ -67,8 +72,12 @@ once and all `m` right-hand sides are solved together. Returns the base
 frequencies ``p = \\hat\\mu / 2``, the means, and the `N × m` BLUPs
 `d` (predicted gene content is ``\\hat\\mu + \\hat d``).
 """
-function base_allele_frequencies(M::AbstractMatrix, Ainv::AbstractMatrix,
-                                 genotyped::AbstractVector{<:Integer}; λ = 0.01)
+function base_allele_frequencies(
+    M::AbstractMatrix,
+    Ainv::AbstractMatrix,
+    genotyped::AbstractVector{<:Integer};
+    λ = 0.01,
+)
     N = size(Ainv, 1)
     ng = size(M, 1)
     length(genotyped) == ng || throw(DimensionMismatch("one row of M per genotyped animal"))
@@ -81,9 +90,12 @@ function base_allele_frequencies(M::AbstractMatrix, Ainv::AbstractMatrix,
     μ ./ 2, μ, S[2:end, :]
 end
 
-base_allele_frequencies(M::AbstractMatrix, ped::DataFrame,
-                        genotyped::AbstractVector{<:Integer}; λ = 0.01) =
-    base_allele_frequencies(M, ainv(ped), genotyped; λ = λ)
+base_allele_frequencies(
+    M::AbstractMatrix,
+    ped::DataFrame,
+    genotyped::AbstractVector{<:Integer};
+    λ = 0.01,
+) = base_allele_frequencies(M, ainv(ped), genotyped; λ = λ)
 
 """
     pseudo_snps(haps::AbstractMatrix, blocks) -> (P, alleles)
@@ -106,7 +118,7 @@ function pseudo_snps(haps::AbstractMatrix, blocks::AbstractVector{<:AbstractUnit
         seen = Dict{Vector{eltype(haps)},Int}()
         order = Vector{Vector{eltype(haps)}}()
         code = Vector{Int}(undef, nh)
-        for h in 1:nh
+        for h = 1:nh
             a = haps[h, blk]
             code[h] = get!(seen, a) do
                 push!(order, a)
@@ -114,7 +126,7 @@ function pseudo_snps(haps::AbstractMatrix, blocks::AbstractVector{<:AbstractUnit
             end
         end
         C = zeros(Int8, n, length(order))
-        for h in 1:nh
+        for h = 1:nh
             C[(h+1)÷2, code[h]] += 1
         end
         push!(cols, C)

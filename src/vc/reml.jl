@@ -22,7 +22,7 @@ struct REMLResult
 end
 
 # lower-triangle index pairs of an m × m covariance matrix
-_vech(m) = [(i, j) for j in 1:m for i in j:m]
+_vech(m) = [(i, j) for j = 1:m for i = j:m]
 
 """
     reml(y, X, effects; σ²e, method = :ai, zero = Int[], tol = 1e-8, maxiter = 200)
@@ -58,8 +58,16 @@ The log-likelihood is ``-\\tfrac12[y'Py + \\log|V| + \\log|X'V^{-1}X|]``
 computed through ``\\log|C| + \\log|R| + \\sum_k \\log|G_k|``. ``C^{-1}`` is
 formed densely, which limits the model to a few thousand equations.
 """
-function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:RandomEffect};
-              σ²e::Real, method::Symbol = :ai, zero = Int[], tol = 1e-8, maxiter = 200)
+function reml(
+    y::AbstractVector,
+    X::AbstractMatrix,
+    effects::AbstractVector{<:RandomEffect};
+    σ²e::Real,
+    method::Symbol = :ai,
+    zero = Int[],
+    tol = 1e-8,
+    maxiter = 200,
+)
     method in (:ai, :em) || throw(ArgumentError("method must be :ai or :em"))
     n = length(y)
     yv = Vector{Float64}(y)
@@ -68,7 +76,8 @@ function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:Ra
     ve = Float64(σ²e)
     # log|K_k| from K_k⁻¹ (constant over iterations)
     logK = [-logdet(cholesky(Symmetric(Matrix(r.Kinv)))) for r in effects]
-    pars(ve, G0) = [ve; reduce(vcat, [[G[i, j] for (i, j) in _vech(size(G, 1))] for G in G0])]
+    pars(ve, G0) =
+        [ve; reduce(vcat, [[G[i, j] for (i, j) in _vech(size(G, 1))] for G in G0])]
     hist = [pars(ve, G0)]
     logLs = Float64[]
     AIinv = zeros(0, 0)
@@ -88,8 +97,11 @@ function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:Ra
         x[keep] = F \ m.rhs[keep]
         e = yv - W * x
         # log-likelihood
-        ldG = sum(size(r.Kinv, 1) * logdet(G0[k]) + size(G0[k], 1) * logK[k]
-                  for (k, r) in enumerate(effects); init = 0.0)
+        ldG = sum(
+            size(r.Kinv, 1) * logdet(G0[k]) + size(G0[k], 1) * logK[k] for
+            (k, r) in enumerate(effects);
+            init = 0.0,
+        )
         push!(logLs, -0.5 * (dot(yv, e) / ve + logdet(F) + n * log(ve) + ldG))
         # gradient, working variates and EM updates
         grad = Float64[]
@@ -102,7 +114,10 @@ function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:Ra
             U = reshape(x[rng], q, mk)
             Gi = inv(Symmetric(G0[k]))
             Ck_ = Ci[rng, rng]
-            T = [tr(Ck_[(a-1)*q+1:a*q, (b-1)*q+1:b*q] * r.Kinv) for a in 1:mk, b in 1:mk]
+            T = [
+                tr(Ck_[((a-1)*q+1):(a*q), ((b-1)*q+1):(b*q)] * r.Kinv) for
+                a = 1:mk, b = 1:mk
+            ]
             S = U' * (r.Kinv * U)                     # Û'K⁻¹Û
             dfu += q * mk - tr(T * Gi)
             push!(emG, (S + T) ./ q)

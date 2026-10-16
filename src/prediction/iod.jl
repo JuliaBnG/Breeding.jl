@@ -53,9 +53,15 @@ function _csr(keys::AbstractVector{<:Integer}, n::Integer)
     ptr
 end
 
-function AnimalModelIOD(y::AbstractVector, fixed::AbstractVector{<:AbstractVector{<:Integer}},
-                        animal::AbstractVector{<:Integer}, sire::AbstractVector{<:Integer},
-                        dam::AbstractVector{<:Integer}, α::Real; F = nothing)
+function AnimalModelIOD(
+    y::AbstractVector,
+    fixed::AbstractVector{<:AbstractVector{<:Integer}},
+    animal::AbstractVector{<:Integer},
+    sire::AbstractVector{<:Integer},
+    dam::AbstractVector{<:Integer},
+    α::Real;
+    F = nothing,
+)
     N = length(sire)
     length(dam) == N || throw(DimensionMismatch("sire and dam differ in length"))
     nanim = max(N, maximum(sire), maximum(dam))
@@ -65,7 +71,7 @@ function AnimalModelIOD(y::AbstractVector, fixed::AbstractVector{<:AbstractVecto
     s[1:N] .= sire
     d[1:N] .= dam
     δ = zeros(nanim)
-    for i in 1:N
+    for i = 1:N
         v = 1.0
         s[i] in 1:N && (v -= 0.25 * (1 + Fv[s[i]]))
         d[i] in 1:N && (v -= 0.25 * (1 + Fv[d[i]]))
@@ -75,7 +81,7 @@ function AnimalModelIOD(y::AbstractVector, fixed::AbstractVector{<:AbstractVecto
     par = Int[]
     kid = Int[]
     mt = Int[]
-    for i in 1:N
+    for i = 1:N
         s[i] > 0 && (push!(par, s[i]); push!(kid, i); push!(mt, d[i]))
         d[i] > 0 && (push!(par, d[i]); push!(kid, i); push!(mt, s[i]))
     end
@@ -84,10 +90,23 @@ function AnimalModelIOD(y::AbstractVector, fixed::AbstractVector{<:AbstractVecto
     rptr = _csr(animal, nanim)
     rec = sortperm(animal)
     nlev = [maximum(f) for f in fixed]
-    foff = [0; cumsum(nlev)[1:end-1]]
-    AnimalModelIOD(Vector{Float64}(y), [Vector{Int}(f) for f in fixed], nlev,
-                   Vector{Int}(animal), s, d, δ, pptr, kid[o], mt[o], rptr, rec, foff,
-                   Float64(α))
+    foff = [0; cumsum(nlev)[1:(end-1)]]
+    AnimalModelIOD(
+        Vector{Float64}(y),
+        [Vector{Int}(f) for f in fixed],
+        nlev,
+        Vector{Int}(animal),
+        s,
+        d,
+        δ,
+        pptr,
+        kid[o],
+        mt[o],
+        rptr,
+        rec,
+        foff,
+        Float64(α),
+    )
 end
 
 """
@@ -98,9 +117,14 @@ Convenience constructor from a pedigree with columns `:sire` and `:dam`
 coefficients are computed by `RelationshipMatrices.nrm_diag`, so the
 implicit ``A^{-1}`` equals `RelationshipMatrices.ainv(ped)`.
 """
-function AnimalModelIOD(y::AbstractVector, fixed::AbstractVector{<:AbstractVector{<:Integer}},
-                        animal::AbstractVector{<:Integer}, ped::DataFrame, α::Real;
-                        inbreeding::Bool = true)
+function AnimalModelIOD(
+    y::AbstractVector,
+    fixed::AbstractVector{<:AbstractVector{<:Integer}},
+    animal::AbstractVector{<:Integer},
+    ped::DataFrame,
+    α::Real;
+    inbreeding::Bool = true,
+)
     F = inbreeding ? nrm_diag(ped) .- 1 : nothing
     AnimalModelIOD(y, fixed, animal, ped.sire, ped.dam, α; F = F)
 end
@@ -195,8 +219,14 @@ its records, its parents and its progeny adjusted for their mates.
 Equations in `fix` (equation index => value) are held at the given
 values, e.g. to constrain group solutions.
 """
-function gauss_seidel(m::AnimalModelIOD; x0 = zeros(neq(m)), fix = Dict{Int,Float64}(),
-                      tol = 1e-9, maxiter = 10_000, history = false)
+function gauss_seidel(
+    m::AnimalModelIOD;
+    x0 = zeros(neq(m)),
+    fix = Dict{Int,Float64}(),
+    tol = 1e-9,
+    maxiter = 10_000,
+    history = false,
+)
     x = Vector{Float64}(x0)
     for (k, v) in fix
         x[k] = v
@@ -212,16 +242,16 @@ function gauss_seidel(m::AnimalModelIOD; x0 = zeros(neq(m)), fix = Dict{Int,Floa
     while it < maxiter
         it += 1
         copyto!(xold, x)
-        for f in 1:nf
+        for f = 1:nf
             ptr, rr = lvl[f]
             fo = _foff(m, f)
-            for l in 1:m.nlev[f]
+            for l = 1:m.nlev[f]
                 haskey(fix, fo + l) && continue
                 s = 0.0
-                for p in ptr[l]:ptr[l+1]-1
+                for p = ptr[l]:(ptr[l+1]-1)
                     k = rr[p]
                     adj = m.y[k] - x[ao+m.animal[k]]
-                    for g in 1:nf
+                    for g = 1:nf
                         g == f && continue
                         adj -= x[_foff(m, g)+m.fixed[g][k]]
                     end
@@ -235,10 +265,10 @@ function gauss_seidel(m::AnimalModelIOD; x0 = zeros(neq(m)), fix = Dict{Int,Floa
             haskey(fix, ao + i) && continue
             D = 0.0
             R = 0.0
-            for p in m.rptr[i]:m.rptr[i+1]-1         # own records
+            for p = m.rptr[i]:(m.rptr[i+1]-1)         # own records
                 k = m.rec[p]
                 adj = m.y[k]
-                for g in 1:nf
+                for g = 1:nf
                     adj -= x[_foff(m, g)+m.fixed[g][k]]
                 end
                 R += adj
@@ -250,7 +280,7 @@ function gauss_seidel(m::AnimalModelIOD; x0 = zeros(neq(m)), fix = Dict{Int,Floa
                 m.sire[i] > 0 && (R += 0.5δ * x[ao+m.sire[i]])
                 m.dam[i] > 0 && (R += 0.5δ * x[ao+m.dam[i]])
             end
-            for p in m.pptr[i]:m.pptr[i+1]-1         # progeny
+            for p = m.pptr[i]:(m.pptr[i+1]-1)         # progeny
                 o = m.prog[p]
                 δo = m.δ[o]
                 D += δo / 4
