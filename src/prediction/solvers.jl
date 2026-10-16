@@ -109,7 +109,7 @@ gauss_seidel(A::AbstractMatrix, b::AbstractVector; kw...) = gauss_seidel(sparse(
 
 """
     pcg(A, b; M = diag(A), x0 = zeros, tol = 1e-12, maxiter = length(b) * 10,
-        criterion = :residual, history = false) -> (x, iterations, conv[, hist])
+        criterion = :residual, uplo = :L, history = false) -> (x, iterations, conv[, hist])
 
 Preconditioned conjugate gradient for a symmetric positive (semi-)
 definite system (Lidauer et al., 1999; Mrode Section 19.6). `A` is a
@@ -119,11 +119,18 @@ matrix or a function `A(v, d)` that overwrites `v` with ``\\mathbf{A}d``
 preconditioner) must be given. Convergence is ``\\|b - Ax\\| / \\|b\\|``
 (`criterion = :residual`) or Mrode's change criterion
 (`criterion = :change`).
+
+A dense BLAS matrix is multiplied as `Symmetric(A, uplo)` (BLAS `symv`),
+which reads only one triangle and halves the memory traffic of a large
+SNP-BLUP system; only that triangle of `A` needs to be filled. Sparse
+matrices and operators are used as given.
 """
 function pcg(A, b::AbstractVector; M = nothing, x0 = zeros(length(b)), tol = 1e-12,
-             maxiter = 10length(b), criterion::Symbol = :residual, history = false)
+             maxiter = 10length(b), criterion::Symbol = :residual, uplo::Symbol = :L,
+             history = false)
     n = length(b)
     Minv = 1 ./ Vector{Float64}(M === nothing ? diag(A) : M)
+    A = _symop(A, uplo)
     x = Vector{Float64}(x0)
     xold = copy(x)
     v = similar(x)
@@ -155,6 +162,9 @@ function pcg(A, b::AbstractVector; M = nothing, x0 = zeros(length(b)), tol = 1e-
     end
     history ? (x, it, conv, reduce(hcat, hist)) : (x, it, conv)
 end
+
+_symop(A::StridedMatrix{<:LinearAlgebra.BlasFloat}, uplo) = Symmetric(A, uplo)
+_symop(A, uplo) = A
 
 _amul!(v, A::AbstractMatrix, d) = mul!(v, A, d)
 _amul!(v, A, d) = A(v, d)

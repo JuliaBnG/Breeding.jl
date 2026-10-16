@@ -21,8 +21,9 @@ evaluation and genomic prediction from pedigree and marker data.
 - **Genomic prediction**: genotype centring (`center_genotypes`), GBLUP
   in selection-index form (`gblup_index`), SNP effects from GBLUP
   (`snp_from_gblup`), base allele frequencies (`base_allele_frequencies`),
-  pseudo-SNPs from phased haplotypes (`pseudo_snps`), and Bayes A, B, C
-  and Cπ (`bayes_snp`).
+  pseudo-SNPs from phased haplotypes (`pseudo_snps`), ``Z'Z`` of SNP-BLUP
+  from dosages or haplotypes, accumulated over record batches (`zpz!`,
+  `zpz_hap!`), and Bayes A, B, C and Cπ (`bayes_snp`).
 - **Threshold models**: probit threshold models solved by Fisher
   scoring (`threshold_model`), category probabilities
   (`category_probabilities`), and joint analysis of a quantitative and
@@ -64,6 +65,7 @@ export jacobi, gauss_seidel, pcg, AnimalModelIOD, rhs
 export covariance_function, henderson3, sire_contrasts, fit_mean_squares, reml, REMLResult
 export gibbs_sweep!, gibbs, gibbs_mt, GibbsResult
 export center_genotypes, snp_from_gblup, gblup_index, base_allele_frequencies, pseudo_snps
+export zpz!, zpz_hap!
 export bayes_snp, BayesResult
 export threshold_model, ThresholdResult, category_probabilities
 export joint_binary_quantitative, JointBinaryResult

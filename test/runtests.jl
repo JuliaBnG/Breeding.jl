@@ -6,6 +6,7 @@ using Random
 using SparseArrays
 using Statistics
 using Test
+using BnGStructs: Trait
 
 # A⁻¹ from RelationshipMatrices for parent vectors
 ainv_ref(s, d) = Matrix(ainv(DataFrame(sire = s, dam = d)))
@@ -22,6 +23,11 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
     X, lv = incidence(SEX; levels = ["M", "F"])
     Z = incidence(CALF, 8)
     a = RandomEffect(Z, sparse(Ai), 20.0)
+
+    @testset "dummy_traits checks n" begin
+        @test_throws ErrorException Breeding.dummy_traits(0, 100)
+        @test_throws ErrorException Breeding.dummy_traits(6, 100)
+    end
 
     @testset "Design helpers" begin
         @test lv == ["M", "F"]
@@ -84,7 +90,75 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
         W = [X Z W2]
         C = W'W + cat(zeros(2, 2), 40 .* kron(inv(G0), Ai); dims = (1, 2))
         @test Matrix(m.lhs) ≈ C
-        @test solve_mme(m) ≈ C \ (W'WWG)
+        x = solve_mme(m)
+        @test x ≈ C \ (W'WWG)
+        # maternal solutions are the second component, not the direct ones
+        _, (u,) = solutions(m, x)
+        @test u[:, 1] ≈ x[3:10] && u[:, 2] ≈ x[11:18]
+        @test !(u[:, 2] ≈ u[:, 1])
+        # warm start: x0 at the solution needs no iteration
+        @test solve_mme(m; method = :pcg, x0 = x) == x
+        @test solve_mme(m; method = :pcg, x0 = x, zero = [1]) ≈ solve_mme(m; zero = [1])
+        @test_throws DimensionMismatch solve_mme(m; method = :pcg, x0 = x[1:3])
+        # a dense system is read from one triangle only
+        A = Matrix(m.lhs)
+        A[1, 2:end] .= NaN
+        @test first(pcg(A, m.rhs)) ≈ x
+        @test first(pcg(permutedims(A), m.rhs; uplo = :U)) ≈ x
+    end
+
+    @testset "mtpblup" begin
+        ped = DataFrame(sire = SIRE, dam = DAM)
+        ped.ft_a = Union{Missing,Float64}[missing, missing, missing, WWG...]
+        ped.ebv_a = zeros(8)
+        Ais = sparse(Ai)
+        # one trait: h² = 1/3, σ²a = 20, so σ²e = 40 as in Example 4.1
+        mtpblup(ped, [Trait("a"; h² = 1 / 3)], Ais, fill(20.0, 1, 1))
+        m1 = mme(WWG, ones(5, 1), [RandomEffect(Z, Ais, 20.0)]; σ²e = 40.0)
+        @test ped.ebv_a ≈ solve_mme(m1)[2:end] atol = 1e-8
+        # two traits: the equations of mme with R⁻¹ = diag(1/σ²e), σ²e = G_tt(1-h²)/h²
+        # (a non-symmetric G⁻¹Λ penalty used to be fed to CG)
+        ped.ft_b = Union{Missing,Float64}[missing, missing, missing, 1.0, 2.5, missing, 0.5, 3.0]
+        ped.ebv_b = zeros(8)
+        trts = [Trait("a"; h² = 1 / 3), Trait("b"; h² = 0.25)]
+        G = [20.0 5; 5 10]
+        p2 = copy(ped)
+        mtpblup(ped, trts, Ais, G)
+        mtpblup(p2, trts, Ais, G; method = :direct)
+        @test ped.ebv_a ≈ p2.ebv_a atol = 1e-8
+        @test ped.ebv_b ≈ p2.ebv_b atol = 1e-8
+        ob = [4, 5, 7, 8] # both traits observed
+        Zo = incidence(ob, 8)
+        Zs2 = [[Zo; spzeros(4, 8)], [spzeros(4, 8); Zo]]
+        Xo = kron(I(2), ones(4))
+        σ²e = [40.0, 30.0]
+        mm = mme([ped.ft_a[ob]; ped.ft_b[ob]], Xo, [RandomEffect(Zs2, Ais, G)];
+                 Rinv = repeat(1 ./ σ²e; inner = 4))
+        @test [p2.ebv_a; p2.ebv_b] ≈ solve_mme(mm)[3:end]
+    end
+
+    @testset "Z'Z, batches and haplotypes" begin
+        rng = Xoshiro(7)
+        n, m = 150, 200 # several 64-bit words and 128-locus tiles
+        H = bitrand(rng, m, 2n) # loci × haplotypes
+        D = Matrix{Int8}((H[:, 1:2:end] .+ H[:, 2:2:end])') # n × m dosages
+        ref = Float64.(D)' * Float64.(D)
+        @test zpz_hap!(zeros(m, m), H) == ref
+        @test zpz_hap!(zeros(m, m), Matrix(H)) == ref
+        Hc = falses(n, 2m) # individuals × locus haplotypes
+        for k in 1:n, i in 1:m
+            Hc[k, 2i-1], Hc[k, 2i] = H[i, 2k-1], H[i, 2k]
+        end
+        @test zpz_hap!(zeros(m, m), Hc; loci = :cols) == ref
+        ZZ = zpz_hap!(zeros(m, m), H[:, 1:100])
+        @test zpz_hap!(ZZ, H[:, 101:end]; accumulate = true) == ref
+        @test zpz!(zeros(m, m), D; rows = 64) == ref
+        @test zpz!(zeros(m, m), Float64.(D)) == ref
+        ZZ = zpz!(zeros(m, m), D[1:70, :])
+        @test zpz!(ZZ, D[71:end, :]; accumulate = true) == ref
+        @test zpz!(zeros(Int, m, m), D) == ref
+        @test_throws DimensionMismatch zpz!(zeros(m - 1, m - 1), D)
+        @test_throws ArgumentError zpz_hap!(zeros(m, m), H[:, 1:3])
     end
 
     @testset "Iteration on data and partitions" begin

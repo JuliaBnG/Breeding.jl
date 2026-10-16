@@ -65,6 +65,8 @@ snp_from_gblup
 gblup_index
 base_allele_frequencies
 pseudo_snps
+zpz!
+zpz_hap!
 bayes_snp
 BayesResult
 ```

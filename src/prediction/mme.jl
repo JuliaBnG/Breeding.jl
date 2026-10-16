@@ -142,8 +142,8 @@ Indices of the equations that are not constrained to zero.
 _keep(n, zero) = isempty(zero) ? collect(1:n) : setdiff(1:n, zero)
 
 """
-    solve_mme(m::MME; zero = Int[], method = :direct, kw...) -> Vector{Float64}
-    solve_mme(lhs, rhs; zero = Int[], method = :direct, kw...)
+    solve_mme(m::MME; zero = Int[], method = :direct, x0 = nothing, kw...) -> Vector{Float64}
+    solve_mme(lhs, rhs; zero = Int[], method = :direct, x0 = nothing, kw...)
 
 Solve the mixed-model equations. Equations listed in `zero` are
 removed and their solutions set to zero; this imposes the usual
@@ -159,16 +159,24 @@ parent group).
 - `:pcg`, `:gauss_seidel`, `:sor`, `:jacobi` – iterative solvers of
   Chapter 19 ([`pcg`](@ref), [`gauss_seidel`](@ref),
   [`jacobi`](@ref)); keywords are passed on.
+
+`x0` (length `length(rhs)`, e.g. the previous round's solutions) is the
+starting value of the iterative solvers; entries of `zero` are dropped
+from it. The direct methods ignore it.
 """
 solve_mme(m::MME; kw...) = solve_mme(m.lhs, m.rhs; kw...)
 
 function solve_mme(lhs::AbstractMatrix, rhs::AbstractVector; zero = Int[],
-                   method::Symbol = :direct, kw...)
+                   method::Symbol = :direct, x0 = nothing, kw...)
     n = length(rhs)
     keep = _keep(n, zero)
     A = lhs[keep, keep]
     b = rhs[keep]
     x = zeros(n)
+    if x0 !== nothing
+        length(x0) == n || throw(DimensionMismatch("x0 must have length $n"))
+        kw = (; kw..., x0 = Vector{Float64}(x0[keep]))
+    end
     x[keep] = if method == :direct
         _direct(A, b)
     elseif method == :pinv

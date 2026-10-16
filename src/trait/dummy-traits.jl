@@ -10,7 +10,7 @@ genetic variance. σₐ² = 2σᵤ²/nlc.
 """
 function dummy_traits(n::Int, nlc::Int)
     @info "Creating $n dummy traits of h² in (0.05, 0.55)"
-    n < 1 || n > 5 && error("n must be in [1, 5]")
+    1 ≤ n ≤ 5 || error("n must be in [1, 5]")
 
     # Dummy traits
     trts, name = [], 'a'  # Dummy trait name
