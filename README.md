@@ -45,40 +45,45 @@ The complete manual and API reference are available at
 
 ## Quick Start
 
-Fit an animal model for weaning weight gain with fixed sex effect and random additive genetic effect:
+Fit Henderson's animal model on weaning weight gain with fixed sex effect and random additive genetic effect:
 
 ```julia
 using Breeding
 using DataFrames
 using RelationshipMatrices
-using SparseArrays
 
-# Pedigree and records
-sire = [0, 0, 0, 1, 3, 1, 4, 3]
-dam  = [0, 0, 0, 0, 2, 2, 5, 6]
-calf = [4, 5, 6, 7, 8]
-sex  = ["M", "F", "F", "M", "M"]
-wwg  = [4.5, 2.9, 3.9, 3.5, 5.0]
+# Pedigree and records in one table (Mrode Example 4.1). Animal IDs are
+# row numbers; founders 1–3 have no records.
+ped = DataFrame(
+    calf = 1:8,
+    sex  = [missing, missing, missing, "M", "F", "F", "M", "M"],
+    sire = [0, 0, 0, 1, 3, 1, 4, 3],
+    dam  = [0, 0, 0, 0, 2, 2, 5, 6],
+    wwg  = [missing, missing, missing, 4.5, 2.9, 3.9, 3.5, 5.0],
+)
+rec = dropmissing(ped, :wwg)
 
-# Setup design matrices
-X, lv = incidence(sex; levels = ["M", "F"])
-Z = incidence(calf, 8)
+# Incidence matrices for fixed sex and random animal effects
+X, levels = incidence(rec.sex; levels = ["M", "F"])
+Z = incidence(rec.calf, nrow(ped))
 
-# Additive relationship matrix inverse A⁻¹
-ped = DataFrame(sire = sire, dam = dam)
+# A⁻¹ from RelationshipMatrices.jl; only the sire and dam columns are used
 Ai = ainv(ped)
 
-# Setup random genetic effect (σ²a = 20.0, σ²e = 40.0)
-a = RandomEffect(Z, sparse(Ai), 20.0; name = "animal")
+# Random genetic effect (σ²a = 20.0, σ²e = 40.0, α = 2.0)
+a = RandomEffect(Z, Ai, 20.0; name = "animal")
 
-# Assemble and solve MME
-m = mme(wwg, X, [a]; σ²e = 40.0)
+# Assemble Henderson's mixed model equations
+m = mme(rec.wwg, X, [a]; σ²e = 40.0)
+
+# Solve for BLUE (fixed) and BLUP (EBV)
 sol = solve_mme(m)
 b, (u,) = solutions(m, sol)
 
-# Accuracies
-pev_animal = pev(m, 1)
-r2_animal  = reliability(m, 1)
+# Breeding values, prediction error variances and reliabilities
+ped.ebv = vec(u)
+ped.pev = vec(pev(m, 1))
+ped.r2  = vec(reliability(m, 1))
 ```
 
 ---
