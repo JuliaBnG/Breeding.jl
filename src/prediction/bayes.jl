@@ -97,12 +97,17 @@ function bayes_snp(
         for i = 1:m
             zi = view(Zd, :, i)
             r = dot(zi, e) + zz[i] * g[i]                  # z'y*
+            # A SNP with z'z = 0 (monomorphic at 0 in the data) carries no
+            # information: its likelihood term is constant, so variance and
+            # inclusion are sampled from their priors (and g from N(0, σ²g)).
+            informative = zz[i] > 0
             fit = true
             if method == :A
                 vg[i] = (Sg + g[i]^2) / rand(rng, Chisq(ν + 1))   # Eqn 11.22
             elseif method == :B
                 v = vg[i]
-                ll(v) = (V = zz[i]^2 * v + zz[i] * ve; -0.5 * (log(V) + r^2 / V))
+                ll(v) = informative ?
+                        (V = zz[i]^2 * v + zz[i] * ve; -0.5 * (log(V) + r^2 / V)) : 0.0
                 l1 = ll(v)
                 for _ = 1:nmh
                     vnew = rand(rng) < 1 - πc ? Sg / rand(rng, Chisq(ν)) : 0.0
@@ -114,10 +119,13 @@ function bayes_snp(
                 vg[i] = v
                 fit = v > 0
             else                                            # :C and :Cpi
-                V1 = zz[i]^2 * vg[i] + zz[i] * ve
-                V0 = zz[i] * ve
-                l1 = -0.5 * (log(V1) + r^2 / V1) + log(1 - πc)
-                l0 = -0.5 * (log(V0) + r^2 / V0) + log(πc)
+                l1, l0 = log(1 - πc), log(πc)
+                if informative
+                    V1 = zz[i]^2 * vg[i] + zz[i] * ve
+                    V0 = zz[i] * ve
+                    l1 += -0.5 * (log(V1) + r^2 / V1)
+                    l0 += -0.5 * (log(V0) + r^2 / V0)
+                end
                 fit = rand(rng) < 1 / (1 + exp(l0 - l1))
             end
             new = if fit                                    # Eqn 11.23
