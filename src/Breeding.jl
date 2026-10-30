@@ -40,7 +40,6 @@ evaluation and genomic prediction from pedigree and marker data.
 module Breeding
 
 using BnGStructs
-using FisherWright
 using RelationshipMatrices
 using DataFrames
 using Distributions
