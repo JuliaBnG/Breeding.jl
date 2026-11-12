@@ -1,5 +1,11 @@
 # Breeding.jl release notes
 
+## v0.2.1
+
+- Support Julia 1.10 (LTS) through the latest release (1.13): `julia`
+  compat lowered from `1.12` to `1.10`, stdlib compat relaxed to `1`.
+  CI now tests 1.10, 1.12 and the latest release.
+
 ## v0.2.0
 
 ### Breaking
