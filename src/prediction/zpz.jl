@@ -77,11 +77,12 @@ integers, so accumulating over batches of individuals is exact (see
 
 Layout of `H`:
 - `loci = :rows` – `m × 2n`, columns `2k-1` and `2k` the haplotypes of
-  individual `k` (the genotype layout of [`gene_drop`](@ref));
+  individual `k` (the locus-major layout of `BnGStructs.Haplotype`);
 - `loci = :cols` – `n × 2m`, columns `2i-1` and `2i` the two haplotypes
-  at locus `i`.
+  at locus `i` (the individual-major layout of `BnGStructs.Genotype`).
 
-`H` may also be an integer matrix of 0/1 alleles; it is packed into a
+`H` may also be a `BnGStructs.Haplotype`, a `BnGStructs.Genotype`, or
+an integer matrix of 0/1 alleles; integer matrices are packed into a
 `BitMatrix` first, and any other value (e.g. dosages `0, 1, 2`, which
 belong in [`zpz!`](@ref)) throws an `ArgumentError`.
 
@@ -149,3 +150,10 @@ function zpz_hap!(ZZ::AbstractMatrix, H::AbstractMatrix{<:Integer}; kw...)
         throw(ArgumentError("H must hold 0/1 alleles; use zpz! for dosages"))
     zpz_hap!(ZZ, BitMatrix(H .== 1); kw...)
 end
+
+# `h.gt` pads loci (rows) to a multiple of 64; drop the padding so `ZZ` is
+# `nlc × nlc`. `Genotype` pads individuals with zero bits, which add nothing.
+zpz_hap!(ZZ::AbstractMatrix, h::Haplotype; kw...) =
+    zpz_hap!(ZZ, view(h.gt, 1:h.nlc, :); loci = :rows, kw...)
+zpz_hap!(ZZ::AbstractMatrix, g::Genotype; kw...) =
+    zpz_hap!(ZZ, g.gt; loci = :cols, kw...)

@@ -1,12 +1,14 @@
 # Breeding.jl
 
 `Breeding.jl` provides mixed-model genetic evaluation, genomic
-prediction, variance-component estimation and forward breeding
-simulation in Julia. The methods follow Mrode and Pocrnic (2023) and the
+prediction, variance-component estimation and optimum contribution
+selection in Julia. The methods follow Mrode and Pocrnic (2023) and the
 original papers cited in each docstring. Relationship matrices come from
 [`RelationshipMatrices.jl`](https://juliabng.github.io/RelationshipMatrices/)
 and genotype containers from
-[`BnGStructs.jl`](https://juliabng.github.io/BnGStructs/).
+[`BnGStructs.jl`](https://juliabng.github.io/BnGStructs/). Forward
+breeding simulation (gene dropping, QTL, true breeding values and
+phenotypes), formerly part of this package, now lives in `BnGsim`.
 
 ## Installation
 
@@ -82,7 +84,7 @@ Pages = [
     "manual/genomic-prediction.md",
     "manual/variance-components.md",
     "manual/threshold-models.md",
-    "manual/simulation-reproduction.md",
+    "manual/optimum-contribution.md",
     "api.md",
 ]
 Depth = 2

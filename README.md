@@ -1,8 +1,8 @@
 # Breeding.jl
 
 `Breeding.jl` is a Julia package for quantitative genetics: genetic
-evaluation, genomic prediction, variance components and breeding-programme
-simulation from pedigree and marker data.
+evaluation, genomic prediction, variance component estimation, and
+optimum contribution selection from pedigree and marker data.
 
 [![Build Status](https://github.com/JuliaBnG/Breeding.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaBnG/Breeding.jl/actions)
 [![Documentation](https://img.shields.io/badge/docs-juliabng.github.io-blue.svg)](https://juliabng.github.io/#breeding)
@@ -36,10 +36,10 @@ The complete manual and API reference are available at
 - **Pedigree Partitions & Reduced Models**:
   Mendelian sampling precisions (`mendelian_precision`), univariate and multivariate EBV partitioning
   (`ebv_partition`, `ebv_partition_mt`), and Reduced Animal Models (`ram_design`, `ram_backsolve`).
-- **Forward Breeding Simulation**:
-  Gene dropping with Poisson-distributed crossovers (`gene_drop`), founder and locus sampling
-  (`sampleID`, `sampleLoci`), additive QTL effect simulation (`eqtl`), true breeding values (`tbv!`),
-  and phenotype generation (`phenotype!`).
+- **Optimum Contribution Selection (OCS & ROCS)**:
+  Meuwissen's (1997) constrained relationship optimization (`TM1997`, `OC_fixsex2`) and Fogg et al.'s (2026)
+  robust optimal contribution selection and robust truncation selection (`rocs`, `ROCSResult`) accounting for
+  prediction error (co)variances.
 
 ---
 

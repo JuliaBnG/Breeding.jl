@@ -28,7 +28,7 @@ makedocs(
             "Genomic Prediction & Bayesian Alphabet" => "manual/genomic-prediction.md",
             "Variance Component Estimation" => "manual/variance-components.md",
             "Threshold & Categorical Models" => "manual/threshold-models.md",
-            "Breeding Simulation & Gene Drop" => "manual/simulation-reproduction.md",
+            "Optimum Contribution Selection" => "manual/optimum-contribution.md",
         ],
         "API reference" => "api.md",
     ],

@@ -96,8 +96,8 @@ zpz!(ZZ, Z_batch1)
 zpz!(ZZ, Z_batch2; accumulate = true)
 ```
 
-When phased 0/1 haplotypes are available (e.g. directly from
-[`gene_drop`](@ref)), [`zpz_hap!`](@ref) computes the exact integer
+When phased 0/1 haplotypes are available (e.g. a `BnGStructs.Haplotype`
+or `Genotype` from a simulation), [`zpz_hap!`](@ref) computes the exact integer
 dosages $\mathbf{Z'Z}$ directly from bit-packed haplotype vectors
 without unpacking or forming $\mathbf{Z}$. Each 64-bit word processes
 64 individuals in parallel using bitwise AND and hardware population

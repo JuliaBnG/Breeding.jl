@@ -1,8 +1,9 @@
 """
     Breeding
 
-Quantitative-genetics tools for breeding-programme simulation, genetic
-evaluation and genomic prediction from pedigree and marker data.
+Quantitative-genetics tools for genetic evaluation, genomic prediction,
+variance component estimation, and optimum contribution selection from
+pedigree and marker data.
 
 # Features
 - **Mixed-model equations (MME)**: Henderson's MME with any number of
@@ -32,10 +33,9 @@ evaluation and genomic prediction from pedigree and marker data.
   precisions (`mendelian_precision`), PA/YD/PC and DYD partitions of
   EBV (`ebv_partition`, `ebv_partition_mt`), and the reduced animal
   model (`ram_design`, `ram_backsolve`).
-- **Simulation**: gene dropping with Poisson-distributed crossovers
-  (`gene_drop`), sampling of individuals and loci (`sampleID`,
-  `sampleLoci`), QTL effects (`eqtl`), true breeding values (`tbv!`) and
-  phenotypes (`phenotype!`).
+- **Optimum contribution selection (OCS & ROCS)**: Meuwissen's (1997)
+  target-coancestry OCS (`TM1997`, `OC_fixsex2`) and Fogg et al.'s (2026)
+  robust optimal contribution selection (`rocs`, `robust_ocs`, `ROCSResult`).
 """
 module Breeding
 
@@ -47,17 +47,12 @@ using LinearAlgebra
 using Statistics
 using Random
 using SparseArrays
-using StatsBase
 
-include("util.jl")
-include("reproduction/reproduce.jl")
 include("prediction/predict.jl")
 include("vc/vc.jl")
-include("trait/trait.jl")
 include("ocs/ocs.jl")
 
-export sampleID, sampleLoci, eqtl, tbv!, phenotype!, mtpblup
-export gene_drop, sum_map, sumMap
+export mtpblup
 export incidence, legendre, linear_spline, mt_blocks, mt_stack, mt_rinv, associate_incidence
 export RandomEffect, MME, mme, solve_mme, solutions, lhs_inverse, pev, reliability
 export jacobi, gauss_seidel, pcg, AnimalModelIOD, rhs
@@ -69,5 +64,6 @@ export bayes_snp, BayesResult
 export threshold_model, ThresholdResult, category_probabilities
 export joint_binary_quantitative, JointBinaryResult
 export mendelian_precision, ebv_partition, ebv_partition_mt, ram_design, ram_backsolve
+export TM1997, OC_fixsex2, rocs, robust_ocs, ROCSResult
 
 end # module Breeding

@@ -91,15 +91,11 @@ ram_design
 ram_backsolve
 ```
 
-## Simulation and reproduction
+## Optimum contribution selection (OCS & ROCS)
 
 ```@docs
-gene_drop
-sum_map
-sumMap
-sampleID
-sampleLoci
-eqtl
-tbv!
-phenotype!
+TM1997
+OC_fixsex2
+rocs
+ROCSResult
 ```

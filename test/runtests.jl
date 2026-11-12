@@ -6,7 +6,7 @@ using Random
 using SparseArrays
 using Statistics
 using Test
-using BnGStructs: Trait
+using BnGStructs: Trait, Haplotype, Genotype
 
 # A⁻¹ from RelationshipMatrices for parent vectors
 ainv_ref(s, d) = Matrix(ainv(DataFrame(sire = s, dam = d)))
@@ -24,9 +24,74 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
     Z = incidence(CALF, 8)
     a = RandomEffect(Z, sparse(Ai), 20.0)
 
-    @testset "dummy_traits checks n" begin
-        @test_throws ErrorException Breeding.dummy_traits(0, 100)
-        @test_throws ErrorException Breeding.dummy_traits(6, 100)
+    @testset "OCS and Robust OCS (Meuwissen 1997; Fogg et al. 2026)" begin
+        # Example 4.1 MME solutions and prediction error covariance Ω
+        m_ocs = mme(WWG, X, [a]; σ²e = 40.0)
+        sol_ocs = solve_mme(m_ocs)
+        _, (u_mat,) = solutions(m_ocs, sol_ocs)
+        u_ebv = vec(u_mat)
+        Cinv_ocs = lhs_inverse(m_ocs)
+        Ω_pec = Matrix(Cinv_ocs[3:10, 3:10]) .* 40.0
+        Σ_rel = nrm(DataFrame(sire = SIRE, dam = DAM))
+        sex_cand = [1, 0, 1, 1, 0, 0, 1, 1]
+
+        # 1. TM1997 (DataFrame and vector methods agree and satisfy constraints)
+        ped_ocs = DataFrame(tmi = u_ebv, sex = sex_cand)
+        c_df = TM1997(ped_ocs, Σ_rel, 0.35)
+        c_vec = TM1997(u_ebv, sex_cand, Σ_rel, 0.35)
+        @test c_df ≈ c_vec
+        @test all(>=(-1e-12), c_df)
+        @test sum(c_df[sex_cand .== 1]) ≈ 0.5 atol = 1e-10
+        @test sum(c_df[sex_cand .== 0]) ≈ 0.5 atol = 1e-10
+        @test c_df' * Σ_rel * c_df ≤ 0.35 + 1e-8
+
+        # OC_fixsex2: male optimization given fixed female contributions
+        males_idx = findall(==(1), sex_cand)
+        females_idx = findall(==(0), sex_cand)
+        ord_idx = [males_idx; females_idx]
+        c_m = OC_fixsex2(
+            u_ebv[males_idx],
+            Σ_rel[ord_idx, ord_idx],
+            0.40,
+            ones(length(females_idx)),
+        )
+        @test length(c_m) == length(males_idx)
+        @test sum(c_m) ≈ 1.0 atol = 1e-8
+        @test all(>=(-1e-12), c_m)
+
+        # 2. Fogg et al. (2026) 4 regimes: TS (0,0), RTS (0,κ), OCS (λ,0), ROCS (λ,κ)
+        r_ts = rocs(u_ebv, Σ_rel; Ω = Ω_pec, sex = sex_cand, λ = 0.0, κ = 0.0, ub = 0.25)
+        r_rts = rocs(u_ebv, Σ_rel; Ω = Ω_pec, sex = sex_cand, λ = 0.0, κ = 1.0, ub = 0.25)
+        r_ocs = rocs(u_ebv, Σ_rel; Ω = Ω_pec, sex = sex_cand, λ = 2.0, κ = 0.0, ub = 0.25)
+        r_rocs = rocs(u_ebv, Σ_rel; Ω = Ω_pec, sex = sex_cand, λ = 2.0, κ = 1.0, ub = 0.25)
+
+        for r in (r_ts, r_rts, r_ocs, r_rocs)
+            @test r.converged
+            @test sum(r.w[sex_cand .== 1]) ≈ 0.5 atol = 1e-8
+            @test sum(r.w[sex_cand .== 0]) ≈ 0.5 atol = 1e-8
+            @test all(-1e-12 .≤ r.w .≤ 0.25 + 1e-12)
+            @test r.merit ≈ dot(r.w, u_ebv)
+            @test r.coancestry ≈ dot(r.w, Σ_rel * r.w)
+            @test r.std_error ≈ sqrt(dot(r.w, Ω_pec * r.w))
+            @test r.objective ≈ r.merit - r.κ * r.std_error - 0.5 * r.λ * r.coancestry
+        end
+
+        # Qualitative ordering from Fogg et al. (2026) Table 2:
+        # - TS maximizes expected genetic merit
+        # - RTS reduces std_error relative to TS
+        # - OCS reduces coancestry relative to TS
+        # - ROCS reduces std_error relative to OCS and coancestry relative to RTS
+        @test r_ts.merit ≥ r_rts.merit - 1e-9
+        @test r_ts.merit ≥ r_ocs.merit - 1e-9
+        @test r_rts.std_error < r_ts.std_error
+        @test r_ocs.coancestry < r_ts.coancestry
+        @test r_rocs.std_error < r_ocs.std_error
+        @test r_rocs.coancestry < r_rts.coancestry
+
+        # Tuple destructuring and vector PEV input
+        w_d, obj_d, merit_d, coanc_d, se_d =
+            robust_ocs(u_ebv, Σ_rel; Ω = diag(Ω_pec), sex = sex_cand, λ = 1.0, κ = 0.5)
+        @test length(w_d) == 8 && isfinite(obj_d) && merit_d > 0 && coanc_d > 0 && se_d > 0
     end
 
     @testset "Design helpers" begin
@@ -176,6 +241,9 @@ const WWG = [4.5, 2.9, 3.9, 3.5, 5.0]
             Hc[k, 2i-1], Hc[k, 2i] = H[i, 2k-1], H[i, 2k]
         end
         @test zpz_hap!(zeros(m, m), Hc; loci = :cols) == ref
+        # BnGStructs containers; m = 200 and n = 150 exercise the 64-bit padding
+        @test zpz_hap!(zeros(m, m), Haplotype(H)) == ref
+        @test zpz_hap!(zeros(m, m), Genotype(Hc)) == ref
         ZZ = zpz_hap!(zeros(m, m), H[:, 1:100])
         @test zpz_hap!(ZZ, H[:, 101:end]; accumulate = true) == ref
         @test zpz!(zeros(m, m), D; rows = 64) == ref
