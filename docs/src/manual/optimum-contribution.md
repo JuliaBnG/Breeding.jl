@@ -14,7 +14,7 @@ coancestry, and hence the rate of inbreeding, is controlled.
 
 The input EBVs, prediction-error (co)variances and relationship matrix
 come directly from the rest of the package (e.g. [`solutions`](@ref),
-[`lhs_inverse`](@ref), [`pev`](@ref)) and from
+[`pev_candidates`](@ref), [`pev`](@ref)) and from
 `RelationshipMatrices.jl` (`nrm`, a genomic $\mathbf{G}$, …).
 
 ---
@@ -85,8 +85,12 @@ targets, and are usually swept to trace a Pareto frontier.
 # Mrode Example 4.1: EBVs and their prediction-error covariance
 m    = mme(y, X, [RandomEffect(Z, Ai, 20.0)]; σ²e = 40.0)
 _, (u,) = solutions(m, solve_mme(m))
-Ω    = Matrix(lhs_inverse(m)[3:10, 3:10]) .* 40.0
+Ω    = pev_candidates(m, 1, 1:8)        # candidates: all eight animals
 A    = nrm(ped)
+
+# The same Ω from the selection-index form, for any relationship matrix
+# K (A, G, H or IBD), records on the animals `ref`, and λ = σ²e/σ²a:
+# Ω = pev_candidates(K, ref, candidates, X, 40.0 / 20.0; σ²a = 20.0)
 
 r = rocs(vec(u), A; Ω = Ω, sex = sex, λ = 2.0, κ = 1.0, ub = 0.25)
 r.w, r.merit, r.std_error, r.coancestry, r.converged

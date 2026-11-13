@@ -54,7 +54,7 @@ include("ocs/ocs.jl")
 
 export mtpblup
 export incidence, legendre, linear_spline, mt_blocks, mt_stack, mt_rinv, associate_incidence
-export RandomEffect, MME, mme, solve_mme, solutions, lhs_inverse, pev, reliability
+export RandomEffect, MME, mme, solve_mme, solutions, lhs_inverse, pev, reliability, pev_candidates
 export jacobi, gauss_seidel, pcg, AnimalModelIOD, rhs
 export covariance_function, henderson3, sire_contrasts, fit_mean_squares, reml, REMLResult
 export gibbs_sweep!, gibbs, gibbs_mt, GibbsResult
