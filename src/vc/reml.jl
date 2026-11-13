@@ -411,7 +411,7 @@ function reml(y::AbstractVector, X::AbstractMatrix, effects::AbstractVector{<:Ra
     logv = [k ≤ nR && dims[k] == 1 for k in eachindex(dims)]
     W = SparseMatrixCSC{Float64,Int}(hcat(sparse(X), (r.Z for r in effects)...))
     # log|K_k| from K_k⁻¹ (constant over iterations)
-    logK = [-logdet(cholesky(Symmetric(Matrix(r.Kinv)))) for r in effects]
+    logK = [-_logdet_spd(r.Kinv) for r in effects]
     store = _setup(yv, X, W, effects, blocks, zero)
     neq = length(store.keepcol)
     p = neq - sum(size(r.Z, 2) for r in effects; init = 0)
@@ -833,3 +833,8 @@ function _reml_eval(ctx, θ; full::Bool)
     AI = 0.5 .* (Fm' * RF .- quadW(RF))
     (logL = logL, grad = grad, AI = Symmetric(AI), em_R = em_R, em_G = em_G, x = x)
 end
+
+# log-determinant of a symmetric positive definite matrix; a sparse matrix
+# is factored sparsely, so K⁻¹ of a large pedigree is never made dense
+_logdet_spd(K::SparseMatrixCSC) = logdet(cholesky(Symmetric(K)))
+_logdet_spd(K::AbstractMatrix) = logdet(cholesky(Symmetric(Matrix(K))))

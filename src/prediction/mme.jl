@@ -248,22 +248,70 @@ required columns of the inverse are solved for.
 function pev(m::MME, k::Integer; zero = Int[])
     r = m.effects[k]
     rng = m.blocks[k+1]
-    n = length(m.rhs)
-    keep = _keep(n, zero)
-    pos = zeros(Int, n)
-    pos[keep] = 1:length(keep)
-    A = m.lhs[keep, keep]
-    F = cholesky(Symmetric(A); check = false)
-    fac = issuccess(F) ? F : lu(A)
-    d = zeros(length(rng))
-    e = zeros(length(keep))
-    for (i, j) in enumerate(rng)
-        pos[j] == 0 && continue
-        fill!(e, 0)
-        e[pos[j]] = 1
-        d[i] = (fac\e)[pos[j]]
-    end
+    d = _inverse_diagonal(m.lhs; zero = zero)[rng]
     reshape(d .* m.scale, nlevels(r), ncomponents(r))
+end
+
+# Diagonal of the (generalized) inverse of a sparse symmetric matrix, with
+# zeros for the equations in `zero`. A positive definite matrix goes through
+# the selected inverse of its Cholesky factor, whose cost is that of the
+# factorisation; otherwise one column is solved per equation with an LU.
+function _inverse_diagonal(A::SparseMatrixCSC; zero = Int[])
+    n = size(A, 1)
+    keep = _keep(n, zero)
+    Ak = isempty(zero) ? A : A[keep, keep]
+    d = zeros(n)
+    F = cholesky(Symmetric(Ak); check = false)
+    if issuccess(F)
+        Z, _ = selinv(F; depermute = true)
+        d[keep] = diag(Z)
+    else
+        fac = lu(Ak)
+        e = zeros(length(keep))
+        for i in eachindex(keep)
+            e[i] = 1
+            d[keep[i]] = (fac\e)[i]
+            e[i] = 0
+        end
+    end
+    d
+end
+_inverse_diagonal(A::AbstractMatrix; zero = Int[]) = diag(lhs_inverse(A; zero = zero))
+
+"""
+    selected_inverse(m::MME; zero = Int[]) -> SparseMatrixCSC{Float64,Int}
+    selected_inverse(lhs::SparseMatrixCSC; zero = Int[])
+
+Selected elements of the inverse of the MME coefficient matrix: every
+element of ``\\mathbf{C}^{-1}`` on the sparsity pattern of the Cholesky
+factor of ``\\mathbf{C}``, which contains the pattern of ``\\mathbf{C}``
+itself (Takahashi equations, through SelectedInversion.jl). Elements
+outside that pattern are not computed and read as zero; they are **not**
+zeros of the inverse. Multiply by `m.scale` for prediction error
+(co)variances.
+
+This is what large models can afford in place of [`lhs_inverse`](@ref):
+memory and time are those of the sparse factorisation. It gives the
+diagonal (hence [`pev`](@ref) and [`reliability`](@ref)), the
+covariances between an animal and its parents and mates, and the traces
+that REML needs. For a dense block among arbitrary candidates use
+[`pev_candidates`](@ref).
+
+The coefficient matrix must be positive definite after the equations in
+`zero` are removed.
+"""
+selected_inverse(m::MME; zero = Int[]) = selected_inverse(m.lhs; zero = zero)
+
+function selected_inverse(lhs::SparseMatrixCSC; zero = Int[])
+    n = size(lhs, 1)
+    keep = _keep(n, zero)
+    A = isempty(zero) ? lhs : lhs[keep, keep]
+    F = cholesky(Symmetric(A))
+    Z, _ = selinv(F; depermute = true)
+    Zs = SparseMatrixCSC{Float64,Int}(Z)
+    isempty(zero) && return Zs
+    I_, J_, V_ = findnz(Zs)
+    sparse(keep[I_], keep[J_], V_, n, n)
 end
 
 """
@@ -365,16 +413,16 @@ end
 Reliability ``r^2 = 1 - \\operatorname{PEV}/\\sigma^2_u`` of the
 levels of random effect `k`, per component (``\\sigma^2_u`` is the
 diagonal of `G0` times the diagonal of ``\\mathbf{K}``). Without
-`Kdiag`, ``\\operatorname{diag}(\\mathbf{K})`` is obtained by densely
-inverting ``\\mathbf{K}^{-1}``, which is only practical for small
-models; for ``\\mathbf{K} = A`` pass `Kdiag = nrm_diag(ped)` (i.e.
-``1 + F_i``). For non-inbred animals this is Henderson's
+`Kdiag`, ``\\operatorname{diag}(\\mathbf{K})`` is taken from the selected
+inverse of a sparse ``\\mathbf{K}^{-1}`` (or a dense inverse of a dense
+one); for ``\\mathbf{K} = A``, `Kdiag = nrm_diag(ped)` (i.e.
+``1 + F_i``) is cheaper still. For non-inbred animals this is Henderson's
 ``1 - d_i\\alpha``.
 """
 function reliability(m::MME, k::Integer; zero = Int[], Kdiag = nothing)
     r = m.effects[k]
     P = pev(m, k; zero = zero)
-    kd = Kdiag === nothing ? diag(inv(Matrix(r.Kinv))) : Kdiag
+    kd = Kdiag === nothing ? _inverse_diagonal(r.Kinv) : Kdiag
     1 .- P ./ (kd * diag(r.G0)')
 end
 

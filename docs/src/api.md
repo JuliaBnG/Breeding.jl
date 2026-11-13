@@ -17,6 +17,7 @@ solutions
 lhs_inverse
 pev
 pev_candidates
+selected_inverse
 reliability
 ```
 
