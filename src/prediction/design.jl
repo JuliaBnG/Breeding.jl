@@ -160,6 +160,21 @@ function mt_rinv(R0::AbstractMatrix, obs::AbstractMatrix{Bool})
 end
 
 """
+    nested(M::AbstractMatrix, g::AbstractVector; levels = sort(unique(g))) -> SparseMatrixCSC
+
+Columns of `M` nested within the levels of `g`: for every level, the
+columns of `M` on the rows with that level and zero elsewhere (levels in
+order). For multi-trait models in long format, e.g. `nested(X, trait)`
+gives trait-specific fixed effects or covariables, and `nested(B,
+collect(zip(trait, lactation)))` fixed curves per trait and lactation.
+"""
+function nested(M::AbstractMatrix, g::AbstractVector; levels = sort(unique(g)))
+    size(M, 1) == length(g) || throw(DimensionMismatch("M has $(size(M, 1)) rows, g has $(length(g))"))
+    S = sparse(M)
+    reduce(hcat, [Diagonal(Float64.(g .== l)) * S for l in levels])
+end
+
+"""
     associate_incidence(group, animal, n; w = 1.0) -> SparseMatrixCSC
 
 Incidence matrix ``Z_S`` of associative (social, indirect) genetic
