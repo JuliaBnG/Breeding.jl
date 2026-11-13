@@ -32,7 +32,20 @@ pedigree. On a Ryzen 9 3900X, 8 threads, Julia 1.13.3:
 | 10 000 | 0.19 s | 0.29 s | 18 s |
 | 100 000 | 4.8 s | 9.2 s | about 3 h |
 
-One run each, no replication; 10⁶ animals has not been run.
+One run each, no replication. A run with 10⁶ animals on a 31 GB desktop
+did not finish and is pending on a larger machine; `bench/scale.jl` now
+reports each stage on `stderr` so that a stalled run shows where it is.
+
+### Validation
+
+`validation/wombat/validate.jl` compares `reml` with WOMBAT (version
+26/05/2025) on simulated data: 3000 animals in 6 generations, 2500 with
+records, 20 contemporary groups. For a univariate animal model and a
+bivariate one with 19% of the records of the second trait missing, all
+(co)variance estimates agree to a relative difference of 1.2e-5 or
+less, the approximate standard errors to the four decimals WOMBAT
+prints, and the maximised log-likelihoods to 4e-4. See
+`validation/wombat/results.txt`.
 
 ## v0.2.2 (unreleased)
 
