@@ -47,8 +47,8 @@ effects are omitted.
 """
 function mtpblup(ped, trts, giv, G; kw...)
     Tt = length(trts)  # total number of traits
-    fts = "ft_" .* getfield.(trts, :name)
-    ebv = "ebv_" .* getfield.(trts, :name)
+    fts = [_trait_columns(t).phenotype for t in trts]
+    ebv = [_trait_columns(t).ebv for t in trts]
 
     nid = size(ped, 1)
     obs = trues(nid)
@@ -81,3 +81,9 @@ function mtpblup(ped, trts, giv, G; kw...)
         end
     end
 end
+
+# The record-column convention is defined by `BnGStructs.trait_columns`
+# (BnGStructs ≥ 0.3); the literal fallback keeps BnGStructs 0.2 working.
+_trait_columns(t) =
+    isdefined(BnGStructs, :trait_columns) ? BnGStructs.trait_columns(t.name) :
+    (tbv = "tbv_" * t.name, phenotype = "ft_" * t.name, ebv = "ebv_" * t.name)

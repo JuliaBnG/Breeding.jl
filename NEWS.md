@@ -13,6 +13,8 @@
   with v0.2.1 to rounding (about 1e-11 on test problems), not bit for
   bit, and a relationship matrix that is not positive definite now
   throws `PosDefException`.
+- Works with BnGStructs 0.2.6 and 0.3. With 0.3, `mtpblup` takes its
+  column names from `BnGStructs.trait_columns`.
 - Package metadata (`license`, `description`, URLs) in `Project.toml`;
   the tests are split by topic and run Aqua.jl.
 
