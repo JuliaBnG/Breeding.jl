@@ -43,4 +43,6 @@ a = RandomEffect(Z, sparse(Ai), 20.0)
     include("threshold.jl")
     include("covfun.jl")
     include("vc.jl")
+    include("reml.jl")
+    include("selinv.jl")
 end

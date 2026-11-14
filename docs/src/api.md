@@ -17,6 +17,7 @@ solutions
 lhs_inverse
 pev
 pev_candidates
+selected_inverse
 reliability
 ```
 
@@ -34,6 +35,7 @@ rhs
 
 ```@docs
 incidence
+nested
 legendre
 linear_spline
 mt_blocks
@@ -48,6 +50,10 @@ mtpblup
 ```@docs
 reml
 REMLResult
+ResidualStructure
+Homogeneous
+HetClasses
+MultiTrait
 gibbs
 gibbs_mt
 gibbs_sweep!

@@ -1,6 +1,53 @@
 # Breeding.jl release notes
 
-## v0.2.2 (unreleased)
+## v0.3.0 (2026-11-14)
+
+### REML
+
+- The REML rewrite of the `rr-reml` branch is merged:
+  `reml(...; residual = ...)` with `Homogeneous`, `HetClasses`
+  (heterogeneous residual classes) and `MultiTrait` residual structures,
+  log-Cholesky AI steps, constraints (`fix`, `equal`), and a sparse
+  back-end (`backend = :sparse`, the default above 2000 equations) that
+  takes its traces from a selected inverse. `nested` builds nested
+  design columns. New dependency: SelectedInversion.jl.
+- `reml` no longer makes a dense copy of each `K⁻¹` to get `log|K|`. That
+  copy alone needed 80 GB for 100 000 animals.
+
+### Prediction error variances
+
+- `selected_inverse`: the elements of `C⁻¹` on the pattern of the Cholesky
+  factor, at the cost of the factorisation.
+- `pev` and `reliability` take the diagonal from the selected inverse
+  instead of solving one column per level, and `reliability` no longer
+  inverts `K⁻¹` densely. Values agree with the dense inverse (tests).
+
+### Scale
+
+`bench/scale.jl` times a single-trait animal model on a simulated
+pedigree. On a Ryzen 9 3900X, 8 threads, Julia 1.13.3:
+
+| Animals | all PEV | one REML iteration | PEV by one solve per animal (extrapolated from 20) |
+| ---: | ---: | ---: | ---: |
+| 10 000 | 0.19 s | 0.29 s | 18 s |
+| 100 000 | 4.8 s | 9.2 s | about 3 h |
+
+One run each, no replication. A run with 10⁶ animals on a 31 GB desktop
+did not finish and is pending on a larger machine; `bench/scale.jl` now
+reports each stage on `stderr` so that a stalled run shows where it is.
+
+### Validation
+
+`validation/wombat/validate.jl` compares `reml` with WOMBAT (version
+26/05/2025) on simulated data: 3000 animals in 6 generations, 2500 with
+records, 20 contemporary groups. For a univariate animal model and a
+bivariate one with 19% of the records of the second trait missing, all
+(co)variance estimates agree to a relative difference of 1.2e-5 or
+less, the approximate standard errors to the four decimals WOMBAT
+prints, and the maximised log-likelihoods to 4e-4. See
+`validation/wombat/results.txt`.
+
+## v0.2.2 (not registered; released as part of v0.3.0)
 
 - `pev_candidates`: the prediction error (co)variance matrix of a set of
   candidates, from the mixed-model equations (`pev_candidates(m, k,

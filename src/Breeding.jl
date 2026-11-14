@@ -47,16 +47,18 @@ using LinearAlgebra
 using Statistics
 using Random
 using SparseArrays
+using SelectedInversion: SelectedInversion, SupernodalMatrix, selinv, selinv_extract!, selinv_extract_setup
 
 include("prediction/predict.jl")
 include("vc/vc.jl")
 include("ocs/ocs.jl")
 
 export mtpblup
-export incidence, legendre, linear_spline, mt_blocks, mt_stack, mt_rinv, associate_incidence
-export RandomEffect, MME, mme, solve_mme, solutions, lhs_inverse, pev, reliability, pev_candidates
+export incidence, nested, legendre, linear_spline, mt_blocks, mt_stack, mt_rinv, associate_incidence
+export RandomEffect, MME, mme, solve_mme, solutions, lhs_inverse, pev, reliability, pev_candidates, selected_inverse
 export jacobi, gauss_seidel, pcg, AnimalModelIOD, rhs
 export covariance_function, henderson3, sire_contrasts, fit_mean_squares, reml, REMLResult
+export ResidualStructure, Homogeneous, HetClasses, MultiTrait
 export gibbs_sweep!, gibbs, gibbs_mt, GibbsResult
 export center_genotypes, snp_from_gblup, gblup_index, base_allele_frequencies, pseudo_snps
 export zpz!, zpz_hap!
