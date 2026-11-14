@@ -1,6 +1,6 @@
 # Breeding.jl release notes
 
-## v0.3.0 (unreleased)
+## v0.3.0 (2026-11-14)
 
 ### REML
 
@@ -47,7 +47,7 @@ less, the approximate standard errors to the four decimals WOMBAT
 prints, and the maximised log-likelihoods to 4e-4. See
 `validation/wombat/results.txt`.
 
-## v0.2.2 (unreleased)
+## v0.2.2 (not registered; released as part of v0.3.0)
 
 - `pev_candidates`: the prediction error (co)variance matrix of a set of
   candidates, from the mixed-model equations (`pev_candidates(m, k,
