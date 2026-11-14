@@ -44,20 +44,22 @@ function TM1997(
     while true
         u = Float64.(u_in[id])
         Q = Float64[sex[id] .== 1 sex[id] .== 0]
-        Ai = inv(Matrix{Float64}(A[id, id]))
-        QAQ = Q' * Ai * Q
-        QAQi = inv(QAQ)
-        f1 = u' * (Ai - Ai * Q * QAQi * Q' * Ai) * u # numerator
+        F = cholesky(Symmetric(Matrix{Float64}(A[id, id])))
+        AiQ = F \ Q
+        Aiu = F \ u
+        QAQi = inv(Symmetric(Q' * AiQ))
+        Qu = Q' * Aiu
+        f1 = dot(u, Aiu) - dot(Qu, QAQi * Qu) # numerator
         f2 = 4K - sum(QAQi) # denominator
         if f2 ≤ 0
-            rc[id] = 0.5 .* (Ai * Q * QAQi * ones(2)) # can't meet the constraint
+            rc[id] = 0.5 .* (AiQ * (QAQi * ones(2))) # can't meet the constraint
             @warn "Cannot achieve constraint $K"
             return rc
         end
         f1 = max(f1, 1e-10)
         λ₀ = sqrt(f1 / f2)
-        λ = QAQi * (Q' * Ai * u .- λ₀)
-        c = Ai * (u - Q * λ) / (2λ₀)
+        λ = QAQi * (Qu .- λ₀)
+        c = (Aiu - AiQ * λ) / (2λ₀)
         ix = findall(>(0), c) # indices of ID of next round
         if length(ix) == length(id)
             rc[id] = c
@@ -101,24 +103,27 @@ function OC_fixsex2(
     c = zeros(Float64, n)
     for _ = 1:1000
         u = Float64.(EBV[ind])
-        AI = inv(Matrix{Float64}(A[ind, ind]))
-        sumAI = sum(AI)
-        AIA12 = AI * A[ind, (n1+1):(n1+n2)]
+        F = cholesky(Symmetric(Matrix{Float64}(A[ind, ind])))
+        AI1 = F \ ones(length(ind))                  # row sums of A⁻¹
+        AIu = F \ u
+        sumAI = sum(AI1)
+        AIA12 = F \ Matrix{Float64}(A[ind, (n1+1):(n1+n2)])
         A22_11 = A[(n1+1):(n1+n2), (n1+1):(n1+n2)] - A[(n1+1):(n1+n2), ind] * AIA12
         denominat =
             4 * (
                 K - dot(c2_scaled, A22_11 * c2_scaled) -
                 ((sum(AIA12 * c2_scaled) + 0.5)^2) / sumAI
             )
-        numerat = dot(u, AI * u) - sum(u' * AI)^2 / sumAI
+        numerat = dot(u, AIu) - sum(AIu)^2 / sumAI
         if denominat <= 0.0
             @warn "Cannot achieve constraint $K; minimizing relationships"
-            c = vec(0.5 .* sum(AI; dims = 2) ./ sumAI)
+            c = 0.5 .* AI1 ./ sumAI
         else
             numerat = max(numerat, 1e-10)
             lamb0 = sqrt(numerat / denominat)
-            lamb = (sum(AI * (u - 2 * lamb0 .* A12c2[ind])) - lamb0) / sumAI
-            c = AI * (u - 2 * lamb0 .* A12c2[ind] .- lamb) ./ (2 * lamb0)
+            AIv = AIu - 2 * lamb0 .* (F \ A12c2[ind])
+            lamb = (sum(AIv) - lamb0) / sumAI
+            c = (AIv .- lamb .* AI1) ./ (2 * lamb0)
         end
         ind2 = findall(>=(0.0), c)
         if length(ind2) == length(ind)

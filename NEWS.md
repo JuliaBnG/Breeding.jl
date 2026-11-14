@@ -1,5 +1,21 @@
 # Breeding.jl release notes
 
+## v0.2.2 (unreleased)
+
+- `pev_candidates`: the prediction error (co)variance matrix of a set of
+  candidates, from the mixed-model equations (`pev_candidates(m, k,
+  candidates)`, solving one right-hand side per candidate) or from the
+  selection-index form (`pev_candidates(K, ref, candidates, X, λ)`,
+  which needs no inverse of `K`). The result is the `Ω` that `rocs`
+  takes.
+- `TM1997` and `OC_fixsex2` factor the relationship matrix of the active
+  set by Cholesky instead of forming its inverse. Contributions agree
+  with v0.2.1 to rounding (about 1e-11 on test problems), not bit for
+  bit, and a relationship matrix that is not positive definite now
+  throws `PosDefException`.
+- Package metadata (`license`, `description`, URLs) in `Project.toml`;
+  the tests are split by topic and run Aqua.jl.
+
 ## v0.2.1
 
 - Support Julia 1.10 (LTS) through the latest release (1.13): `julia`

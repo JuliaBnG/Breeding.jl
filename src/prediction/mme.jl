@@ -267,6 +267,99 @@ function pev(m::MME, k::Integer; zero = Int[])
 end
 
 """
+    pev_candidates(m::MME, k, candidates; component = 1, zero = Int[]) -> Matrix{Float64}
+
+Prediction error (co)variance matrix
+``\\mathrm{Var}(\\mathbf{u}_c - \\hat{\\mathbf{u}}_c)`` of the levels
+`candidates` of random effect `k`, component `component`: the block of
+the inverse coefficient matrix for those equations, times the residual
+scale. Its diagonal equals the matching elements of [`pev`](@ref). Only
+`length(candidates)` right-hand sides are solved, so the full inverse is
+never formed.
+
+The result is the matrix `Ω` that [`rocs`](@ref) expects. Equations in
+`zero` are constrained to zero as in [`solve_mme`](@ref); a candidate
+may not be one of them.
+"""
+function pev_candidates(
+    m::MME,
+    k::Integer,
+    candidates::AbstractVector{<:Integer};
+    component::Integer = 1,
+    zero = Int[],
+)
+    r = m.effects[k]
+    q = nlevels(r)
+    1 <= component <= ncomponents(r) ||
+        throw(ArgumentError("component must be in 1:$(ncomponents(r))"))
+    all(c -> 1 <= c <= q, candidates) ||
+        throw(ArgumentError("candidates must be levels in 1:$q"))
+    offset = first(m.blocks[k+1]) - 1 + (component - 1) * q
+    n = length(m.rhs)
+    keep = _keep(n, zero)
+    pos = zeros(Int, n)
+    pos[keep] = 1:length(keep)
+    rows = [pos[offset+c] for c in candidates]
+    all(>(0), rows) ||
+        throw(ArgumentError("a candidate equation is constrained to zero"))
+    A = m.lhs[keep, keep]
+    F = cholesky(Symmetric(A); check = false)
+    fac = issuccess(F) ? F : lu(A)
+    E = zeros(length(keep), length(rows))
+    for (j, i) in enumerate(rows)
+        E[i, j] = 1
+    end
+    Γ = (fac\E)[rows, :] .* m.scale
+    (Γ .+ Γ') ./ 2
+end
+
+"""
+    pev_candidates(K, ref, candidates, X, λ; σ²a = 1.0, w = nothing) -> Matrix{Float64}
+
+The same matrix from the selection-index (V) form, without inverting
+`K`. With records on the animals `ref`, relationship matrix `K` over all
+animals, fixed-effect design `X` (one row per record, full column rank)
+and ``\\lambda = \\sigma^2_e / \\sigma^2_a``,
+
+```math
+\\boldsymbol\\Gamma = \\sigma^2_a \\left(\\mathbf{K}_{cc} -
+\\mathbf{K}_{cr}\\mathbf{P}\\mathbf{K}_{rc}\\right), \\qquad
+\\mathbf{P} = \\mathbf{V}^{-1} -
+\\mathbf{V}^{-1}\\mathbf{X}(\\mathbf{X}'\\mathbf{V}^{-1}\\mathbf{X})^{-1}\\mathbf{X}'\\mathbf{V}^{-1},
+```
+
+where ``\\mathbf{V} = \\mathbf{K}_{rr} + \\lambda\\mathbf{I}``, or
+``\\mathbf{K}_{rr} + \\lambda\\,\\mathrm{diag}(1/w)`` with record weights
+`w` as in [`gblup_index`](@ref). `K` may be `A`, `G`, `H` or an IBD
+matrix; it need not be invertible. Candidates may be among `ref`.
+
+This equals the mixed-model form when `K` is invertible and the fixed
+effects are the same.
+"""
+function pev_candidates(
+    K::AbstractMatrix,
+    ref::AbstractVector{<:Integer},
+    candidates::AbstractVector{<:Integer},
+    X::AbstractMatrix,
+    λ::Real;
+    σ²a::Real = 1.0,
+    w = nothing,
+)
+    nr = length(ref)
+    size(X, 1) == nr || throw(DimensionMismatch("X needs one row per record in ref"))
+    λ > 0 || throw(ArgumentError("λ must be positive"))
+    V = Symmetric(Matrix{Float64}(K[ref, ref]) + λ * (w === nothing ? I : Diagonal(1 ./ w)))
+    F = cholesky(V)
+    Krc = Matrix{Float64}(K[ref, candidates])
+    B = F \ Krc                                       # V⁻¹K_rc
+    Xd = Matrix{Float64}(X)
+    ViX = F \ Xd
+    PB = B - ViX * (cholesky(Symmetric(Xd' * ViX)) \ (Xd' * B))
+    Γ = Float64(σ²a) .* (Matrix{Float64}(K[candidates, candidates]) - Krc' * PB)
+    (Γ .+ Γ') ./ 2
+end
+
+"""
     reliability(m::MME, k::Integer; zero = Int[], Kdiag = nothing) -> Matrix{Float64}
 
 Reliability ``r^2 = 1 - \\operatorname{PEV}/\\sigma^2_u`` of the

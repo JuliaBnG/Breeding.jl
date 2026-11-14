@@ -16,6 +16,7 @@ solve_mme
 solutions
 lhs_inverse
 pev
+pev_candidates
 reliability
 ```
 
