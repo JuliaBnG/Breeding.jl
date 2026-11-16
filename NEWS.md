@@ -14,6 +14,15 @@
 - `reml` no longer makes a dense copy of each `K⁻¹` to get `log|K|`. That
   copy alone needed 80 GB for 100 000 animals.
 
+### Changed REML output
+
+- `reml` records the log-likelihood of the final iterate as well, so
+  `history` and `logLs` have the same number of columns (`logLs[k]`
+  belongs to `history[:, k]`). In v0.2.1 `history` had one column more;
+  code that paired them by dropping the last column of `history` must
+  take `1:length(logLs)` instead. *(Added after release; it is also in
+  the GitHub release notes.)*
+
 ### Prediction error variances
 
 - `selected_inverse`: the elements of `C⁻¹` on the pattern of the Cholesky
@@ -32,9 +41,22 @@ pedigree. On a Ryzen 9 3900X, 8 threads, Julia 1.13.3:
 | 10 000 | 0.19 s | 0.29 s | 18 s |
 | 100 000 | 4.8 s | 9.2 s | about 3 h |
 
-One run each, no replication. A run with 10⁶ animals on a 31 GB desktop
-did not finish and is pending on a larger machine; `bench/scale.jl` now
-reports each stage on `stderr` so that a stalled run shows where it is.
+One run each, no replication.
+
+Added after release: on a Ryzen 9 5950X with 93 GB, 16 threads, Julia
+1.13.3 (one run, `bench/results/scale-2026-11-14-ryzen5950x.txt`):
+
+| Animals | `ainv` | solve | all PEV | one REML iteration |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 000 | 0.20 s | 1.5 s | 3.4 s | 6.6 s |
+| 1 000 000 | 2.3 s | 71 s | 376 s | 892 s |
+
+The process holding both runs peaked at 79 GB. From 10⁵ to 10⁶ animals
+PEV took 110 times and REML 135 times as long, far more than linear; fill
+in the Cholesky factor of this pedigree is the likely cause but has not
+been measured. A first attempt at 10⁶ on a 31 GB desktop stalled and was
+stopped, which is why `bench/scale.jl` now reports each stage on
+`stderr`.
 
 ### Validation
 
