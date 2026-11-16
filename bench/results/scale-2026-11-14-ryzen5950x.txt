@@ -1,0 +1,9 @@
+# bench/scale.jl 100000 1000000 on amd, 2026-11-14 (Breeding v0.3.0 at 64a9130)
+# /usr/bin/time: wall 1841.61 s, peak RSS 82604700 kB (both sizes in one process)
+# threads 16, BLAS 16, Julia 1.13.3, AMD Ryzen 9 5950X 16-Core Processor
+#       N   nnz(C)  ainv(s)   mme(s) solve(s)   pev(s)  pev(MiB)  reml(s) reml(MiB) pev maxerr  columns(s)*
+# * time to get all PEV by solving one column per animal, extrapolated from 20 columns
+     1000      7928     0.10     0.25     0.01     0.00       4.4     3.52     227.3   1.11e-16     0.08
+   100000    819666     0.20     0.04     1.48     3.40    1059.9     6.57    2674.5   5.55e-17  7970.90
+  1000000   8199708     2.27     0.28    71.05   376.17   74492.2   892.34  178220.2   5.55e-17 3657369.95
+exit 0
