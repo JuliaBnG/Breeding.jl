@@ -1,5 +1,10 @@
 # Breeding.jl release notes
 
+## v0.3.1 (2026-11-17)
+
+- Compat: BnGStructs 0.4 (no change in Breeding; BnGStructs 0.4 removed
+  `Species.nid` and `aTrait.QTL`, which Breeding does not use).
+
 ## v0.3.0 (2026-11-14)
 
 ### REML
