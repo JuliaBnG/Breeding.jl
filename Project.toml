@@ -1,6 +1,6 @@
 name = "Breeding"
 uuid = "cb565f4f-111b-40c2-8768-3bafadb18772"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Xijiang Yu <xijiang@users.noreply.github.com>"]
 license = "MIT"
 description = "Genetic evaluation, variance components, genomic prediction and optimum contribution selection for quantitative genetics in Julia."
@@ -22,7 +22,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
 Aqua = "0.8"
-BnGStructs = "0.2.6, 0.3"
+BnGStructs = "0.2.6, 0.3, 0.4"
 DataFrames = "1.8.1"
 Distributions = "0.25.123"
 julia = "1.10"
