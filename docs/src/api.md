@@ -103,6 +103,8 @@ ram_backsolve
 ```@docs
 TM1997
 OC_fixsex2
+OCSContributions
+feasible
 rocs
 ROCSResult
 ```

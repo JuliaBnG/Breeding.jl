@@ -32,19 +32,32 @@ come directly from the rest of the package (e.g. [`solutions`](@ref),
 where $\mathbf{Q}$ holds male and female indicators. With a target
 inbreeding $k_t = k_{t-1} + \Delta F (1 - k_{t-1})$, $K = 2k_t$. The
 Lagrangian solution is iterated, dropping candidates with negative
-contributions, until all remaining contributions are positive. If $K$
-is below the minimum attainable $\mathbf{c}'\mathbf{A}\mathbf{c}$, a
-warning is issued and the minimum-coancestry contributions are
-returned.
+contributions, until all remaining contributions are positive. The result is an
+[`OCSContributions`](@ref): a read-only vector of the contributions that
+also records whether the constraint was met ([`feasible`](@ref)) and the
+coancestry reached, $\mathbf{c}'\mathbf{A}\mathbf{c}$ (`c.cAc`). If $K$
+is below the minimum attainable coancestry, the minimum-coancestry
+contributions (non-negative, ½ per sex) are returned and flagged
+infeasible; no warning is issued, so a breeding programme that runs OCS
+every generation decides what to do.
 
 ```julia
 c = TM1997(DataFrame(tmi = ebv, sex = sex), A, K)   # sex: 1 male, 0 female
 c = TM1997(ebv, sex, A, K)                          # equivalent vector method
+feasible(c), c.cAc                                  # was K met, and c'Ac
+2 .* c                                              # a Vector{Float64}
 ```
+
+Candidates with negative contributions are dropped and not re-admitted,
+so neither the constrained solution nor the minimum-coancestry fallback
+is guaranteed to be the optimum of the quadratic programme. For a
+solution of the full problem with bounds, use [`rocs`](@ref).
 
 [`OC_fixsex2`](@ref) solves the male side when the female contributions
 are fixed (e.g. already-selected dams), with `A` ordered males first,
-then the fixed females.
+then the fixed females. It returns an `OCSContributions` too; when $K$
+cannot be met, the male contributions of minimum coancestry given the
+females.
 
 ---
 
