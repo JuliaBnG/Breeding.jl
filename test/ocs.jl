@@ -36,6 +36,28 @@
     @test sum(c_df[sex_cand .== 0]) ≈ 0.5 atol = 1e-10
     @test c_df' * Σ_rel * c_df ≤ 0.35 + 1e-8
 
+    # the result: a read-only vector with the flag and c'Ac
+    @test c_vec isa OCSContributions && c_vec isa AbstractVector{Float64}
+    @test feasible(c_vec) && c_vec.cAc ≈ dot(c_vec, Σ_rel * c_vec)
+    @test 2 .* c_vec isa Vector{Float64}
+    # K below the minimum coancestry: no warning, the minimum-coancestry
+    # contributions (c ≥ 0, ½ per sex), flagged infeasible
+    c_min = @test_logs TM1997(u_ebv, sex_cand, Σ_rel, 0.01)
+    @test !feasible(c_min) && c_min.cAc > 0.01
+    @test all(>=(0), c_min)
+    @test sum(c_min[sex_cand .== 1]) ≈ 0.5 && sum(c_min[sex_cand .== 0]) ≈ 0.5
+    # KKT of min c'Ac s.t. c ≥ 0, ½ per sex: (Ac)ᵢ equal within a sex where
+    # cᵢ > 0, and not smaller where cᵢ = 0
+    g = Σ_rel * c_min
+    for s in (0, 1)
+        pos = findall(i -> sex_cand[i] == s && c_min[i] > 1e-12, 1:8)
+        zer = findall(i -> sex_cand[i] == s && c_min[i] <= 1e-12, 1:8)
+        @test maximum(g[pos]) - minimum(g[pos]) < 1e-10
+        @test all(g[zer] .>= g[pos[1]] - 1e-10)
+    end
+    # it is the cheapest of the solutions the constrained problem allows
+    @test c_min.cAc <= minimum(c -> c.cAc, (TM1997(u_ebv, sex_cand, Σ_rel, K) for K in (0.3, 0.35, 0.5))) + 1e-12
+
     # OC_fixsex2: male optimization given fixed female contributions
     males_idx = findall(==(1), sex_cand)
     females_idx = findall(==(0), sex_cand)
@@ -49,6 +71,18 @@
     @test length(c_m) == length(males_idx)
     @test sum(c_m) ≈ 1.0 atol = 1e-8
     @test all(>=(-1e-12), c_m)
+    @test c_m isa OCSContributions && feasible(c_m)
+    A_ord = Σ_rel[ord_idx, ord_idx]
+    call = [0.5 .* c_m; fill(0.5 / length(females_idx), length(females_idx))]
+    @test c_m.cAc ≈ dot(call, A_ord * call) && c_m.cAc <= 0.40 + 1e-8
+    # unattainable: the male contributions of minimum coancestry given the females
+    c_m0 = @test_logs OC_fixsex2(u_ebv[males_idx], A_ord, 0.01, ones(length(females_idx)))
+    @test !feasible(c_m0) && sum(c_m0) ≈ 1.0 && all(>=(0), c_m0)
+    call0 = [0.5 .* c_m0; fill(0.5 / length(females_idx), length(females_idx))]
+    gm = (A_ord * call0)[1:length(males_idx)]
+    pos = findall(>(1e-12), c_m0)
+    @test maximum(gm[pos]) - minimum(gm[pos]) < 1e-10
+    @test all(gm[setdiff(eachindex(gm), pos)] .>= gm[pos[1]] - 1e-10)
 
     # 2. Fogg et al. (2026) 4 regimes: TS (0,0), RTS (0,κ), OCS (λ,0), ROCS (λ,κ)
     r_ts = rocs(u_ebv, Σ_rel; Ω = Ω_pec, sex = sex_cand, λ = 0.0, κ = 0.0, ub = 0.25)

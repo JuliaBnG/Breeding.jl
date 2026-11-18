@@ -66,6 +66,6 @@ export bayes_snp, BayesResult
 export threshold_model, ThresholdResult, category_probabilities
 export joint_binary_quantitative, JointBinaryResult
 export mendelian_precision, ebv_partition, ebv_partition_mt, ram_design, ram_backsolve
-export TM1997, OC_fixsex2, rocs, robust_ocs, ROCSResult
+export TM1997, OC_fixsex2, OCSContributions, feasible, rocs, robust_ocs, ROCSResult
 
 end # module Breeding

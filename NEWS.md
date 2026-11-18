@@ -1,5 +1,29 @@
 # Breeding.jl release notes
 
+## v0.4.0 (2026-11-18)
+
+### Breaking changes
+
+- `TM1997` and `OC_fixsex2` return an `OCSContributions`, a read-only
+  `AbstractVector{Float64}` of the contributions with two more fields:
+  `feasible` (whether ``c'Ac \le K`` holds, read with `feasible(c)`) and
+  `cAc` (the coancestry reached). Indexing, broadcasting (`2 .* c` is a
+  `Vector{Float64}`) and `≈` work as before; code that needs a
+  `Vector{Float64}` (e.g. to mutate it) uses `c.c` or `collect(c)`.
+- No warning is issued when `K` cannot be met; the flag replaces it.
+
+### Fixed
+
+- `TM1997` with an unattainable `K` could return negative contributions:
+  the minimum-coancestry fallback was the unconstrained solution on the
+  candidates left after the last iteration. It is now computed over all
+  candidates under ``c \ge 0`` (dropping negative contributions), and
+  the tests check the KKT conditions of that minimum.
+- `OC_fixsex2` with an unattainable `K` ignored the fixed females in its
+  fallback (it returned equal row sums of ``A_{11}^{-1}``); it now
+  returns the male contributions of minimum coancestry given the
+  females, ``A_{11}^{-1}(\mu 1 - A_{12} c_2)``.
+
 ## v0.3.1 (2026-11-17)
 
 - Compat: BnGStructs 0.4 (no change in Breeding; BnGStructs 0.4 removed
