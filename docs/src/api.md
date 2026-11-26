@@ -6,6 +6,14 @@
 Breeding.Breeding
 ```
 
+## Models from a table of records
+
+```@docs
+AnimalModel
+animal_model
+blup
+```
+
 ## Mixed model equations (MME)
 
 ```@docs

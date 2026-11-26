@@ -61,6 +61,57 @@ When residuals are homogeneous and independent ($\mathbf{R} = \mathbf{I}\sigma^2
 
 ---
 
+## From a table of records: `animal_model`
+
+[`animal_model`](@ref) builds the model from a table of records and a
+pedigree, with any labels, so that `X`, the `Z`s and the level maps need
+not be formed by hand. Every trait has its own mean; the other fixed
+effects are nested within trait, and the first level of each factor is
+the reference, set to zero, so that `X` has full column rank (the
+constructor checks it). A random term is `column => G0` (independent
+levels), `column => (:A, G0)` (relationships from the pedigree), or
+`column => ((Kinv, labels), G0)` for any other ``\mathbf{K}^{-1}``. A
+tuple of columns gives correlated components on the same levels, such
+as direct and maternal effects. Several traits are stacked trait-major,
+with one residual covariance matrix `R0` among the traits of a row and
+missing records left out.
+
+Example 4.1 of Mrode (2014), with a maternal effect added:
+
+```@example am
+using Breeding, DataFrames
+ped = DataFrame(id = 1:8, sire = [0, 0, 0, 1, 3, 1, 4, 3], dam = [0, 0, 0, 0, 2, 2, 5, 6])
+data = DataFrame(id = 4:8, sex = ["M", "F", "F", "M", "M"],
+                 wwg = [4.5, 2.9, 3.9, 3.5, 5.0], dam = [missing, 2, 2, 5, 6])
+m = animal_model(data; traits = :wwg, fixed = :sex,
+                 random = [:id => (:A, 20.0)], ped = ped, R0 = 40.0)
+est = blup(m; pev = true)
+est.fixed
+```
+
+```@example am
+est.random[1]
+```
+
+With correlated direct and maternal effects, `G0` is the covariance
+matrix of the two components:
+
+```@example am
+m2 = animal_model(data; traits = :wwg, fixed = :sex,
+                  random = [(:id, :dam) => (:A, [20.0 -4; -4 10])], ped = ped, R0 = 40.0)
+blup(m2).random[1]
+```
+
+[`reml`](@ref)`(m)` estimates the covariances from the model's starting
+values, and `animal_model(m, r)` returns the model with the estimates,
+ready for [`blup`](@ref). [`mme`](@ref)`(m)` gives the equations for the
+lower-level functions ([`pev_candidates`](@ref), the iterative solvers,
+…). Random regressions, unknown parent groups, heterogeneous residuals
+and random effects on some traits only are not built by `animal_model`;
+they use [`RandomEffect`](@ref) and [`mme`](@ref) directly.
+
+---
+
 ## Defining Random Effects: `RandomEffect`
 
 A random term is represented by `RandomEffect`. It handles:
