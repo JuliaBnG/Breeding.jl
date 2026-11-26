@@ -1,5 +1,30 @@
 # Breeding.jl release notes
 
+## v0.5.0 (unreleased)
+
+### New
+
+- `animal_model(data; traits, fixed, covariates, random, ped, R0)` builds
+  an `AnimalModel` from a table of records and a pedigree with any labels:
+  trait-specific means, categorical fixed effects (first level the
+  reference, `X` checked for full column rank) and covariates, the same
+  for every trait or per trait; random terms `column => G0`,
+  `column => (:A, G0)` (A⁻¹ from the pedigree through
+  `RelationshipMatrices.renumber` and `ainv`) or
+  `column => ((Kinv, labels), G0)`, with tuples of columns for correlated
+  components such as direct and maternal effects; several traits stacked
+  trait-major with missing records left out and one residual covariance
+  matrix among the traits of a row.
+- `blup(m; pev = false)` solves it and returns the fixed effects and
+  each random effect as `DataFrame`s keyed by the original labels;
+  `mme(m)` and `reml(m)` give the equations and REML of the model, and
+  `animal_model(m, r)` puts REML estimates into it.
+
+### Breaking changes
+
+- None. The new exports `AnimalModel`, `animal_model` and `blup` may
+  clash with names in user code.
+
 ## v0.4.0 (2026-11-18)
 
 ### Breaking changes

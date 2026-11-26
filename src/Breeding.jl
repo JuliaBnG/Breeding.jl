@@ -52,8 +52,10 @@ using SelectedInversion: SelectedInversion, SupernodalMatrix, selinv, selinv_ext
 include("prediction/predict.jl")
 include("vc/vc.jl")
 include("ocs/ocs.jl")
+include("animal-model.jl")
 
 export mtpblup
+export AnimalModel, animal_model, blup
 export incidence, nested, legendre, linear_spline, mt_blocks, mt_stack, mt_rinv, associate_incidence
 export RandomEffect, MME, mme, solve_mme, solutions, lhs_inverse, pev, reliability, pev_candidates, selected_inverse
 export jacobi, gauss_seidel, pcg, AnimalModelIOD, rhs
